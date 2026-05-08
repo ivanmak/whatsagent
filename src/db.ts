@@ -577,6 +577,7 @@ export function migrate(db: Database): void {
   if (!migrationApplied(db, 21)) applyMigration21(db);
   if (!migrationApplied(db, 22)) applyMigration22(db);
   if (!migrationApplied(db, 23)) applyMigration23(db);
+  if (!migrationApplied(db, 24)) applyMigration24(db);
 }
 
 // Historical schema-repair pass for DBs upgraded from earlier versions where a
@@ -1557,6 +1558,87 @@ function applyMigration23(db: Database): void {
     db.run("CREATE INDEX IF NOT EXISTS agent_session_credentials_session_idx ON agent_session_credentials(role_id, session_id, expires_at)");
     db.run("INSERT INTO schema_migrations (version, applied_at) VALUES (23, ?)", [nowIso()]);
   })();
+}
+
+/**
+ * Repair v14's `roles` → `agents` rename for SQLite builds where
+ * `ALTER TABLE roles RENAME TO agents` did NOT auto-rewrite the dependent
+ * tables' `REFERENCES roles(id)` clauses in `sqlite_master`. SQLite is
+ * supposed to do that rewrite when `legacy_alter_table` is OFF (default
+ * since 3.25), but Bun's bundled SQLite on macOS hits the legacy-on
+ * codepath and leaves the `REFERENCES roles(id)` literal intact.
+ *
+ * Once v15 introduced a NEW `roles` table for RBAC, every dependent
+ * table's FK started resolving against the wrong table — agent UUIDs
+ * aren't in the RBAC roles table, so every insert into sessions /
+ * runners / kanban / etc. FK-fails.
+ *
+ * Fix: for each pre-v14 ID-FK table, follow the standard SQLite "change
+ * a column FK" recipe — recreate the table with the corrected DDL and
+ * copy data over. Bun blocks `PRAGMA writable_schema` mutations on
+ * `sqlite_master`, so the in-place REPLACE path is unavailable.
+ *
+ * We do NOT touch `agent_roles` / `role_grants` / any other RBAC table —
+ * those legitimately reference `roles(id)` (the new RBAC `roles` table).
+ *
+ * Idempotent: tables whose DDL no longer contains `REFERENCES roles(id)`
+ * are skipped (the Linux happy-path).
+ */
+function applyMigration24(db: Database): void {
+  // Pre-v14 tables whose `role_id` / `*_role_id` FKs originally pointed
+  // at the identity table. Sourced from a Mac DB query and cross-checked
+  // against the v1..v13 CREATE TABLE statements in this file.
+  const targets = [
+    "sessions",
+    "agent_locks",
+    "permissions",
+    "launch_tokens",
+    "runners",
+    "channel_messages",
+    "events",
+    "kanban_tasks",
+    "kanban_comments",
+    "kanban_dependencies",
+    "kanban_activity",
+    "kanban_notifications",
+    "kanban_epics",
+    "kanban_epic_comments",
+    "kanban_epic_activity",
+    "kanban_epic_notifications",
+  ];
+
+  db.run("PRAGMA foreign_keys = OFF");
+  try {
+    db.transaction(() => {
+      for (const name of targets) {
+        const row = db.query<{ sql: string }, [string]>(
+          "SELECT sql FROM sqlite_master WHERE name = ? AND type = 'table'",
+        ).get(name);
+        if (!row || !row.sql || !row.sql.includes("REFERENCES roles(id)")) continue;
+
+        const tempName = `${name}_v24_new`;
+        const newDdl = row.sql
+          .replace(
+            new RegExp(`CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?["\`\\[]?${name}["\`\\]]?`, "i"),
+            `CREATE TABLE ${tempName}`,
+          )
+          .replace(/REFERENCES roles\(id\)/g, "REFERENCES agents(id)");
+
+        const indexes = db.query<{ sql: string }, [string]>(
+          "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL",
+        ).all(name);
+
+        db.run(newDdl);
+        db.run(`INSERT INTO ${tempName} SELECT * FROM ${name}`);
+        db.run(`DROP TABLE ${name}`);
+        db.run(`ALTER TABLE ${tempName} RENAME TO ${name}`);
+        for (const idx of indexes) db.run(idx.sql);
+      }
+      db.run("INSERT INTO schema_migrations (version, applied_at) VALUES (24, ?)", [nowIso()]);
+    })();
+  } finally {
+    db.run("PRAGMA foreign_keys = ON");
+  }
 }
 
 /** Spec §"Default Built-in Roles" → seeded as `is_builtin = 1`. */
