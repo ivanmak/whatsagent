@@ -12,7 +12,8 @@
     "test": "bun test",
     "test:affected": "bash scripts/test-affected.sh",
     "typecheck": "bunx tsc --noEmit",
-    "smoke": "bun scripts/smoke.ts"
+    "smoke": "bun scripts/smoke.ts",
+    "postinstall": "node scripts/fix-node-pty-perms.mjs"
   },
   "devDependencies": {
     "@types/bun": "^1.3.11",
