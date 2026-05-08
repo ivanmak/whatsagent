@@ -2145,14 +2145,17 @@ test("EP-008 WA-035: sidebar logout and global 401 redirect are wired", () => {
   expect(script).toContain("if (action === 'auth-logout') logoutWebSession();");
 });
 
-test("EP-003 fix-up (advisor msg #40): roleAvatarWithPresence keys runner lookup on display_id, openKanbanTask closes the epic drawer, DAG NODE_H bumped to 110", () => {
+test("EP-003 fix-up (advisor msg #40): roleAvatarWithPresence keys runner lookup on display_id, openKanbanTask closes the epic drawer, DAG NODE_H bumped to 132", () => {
   // 1) Presence dot must not collide on bare role.name across repos.
   expect(clientSource).toContain("Boolean(runnerFor(addr))");
   expect(clientSource).not.toMatch(/function roleAvatarWithPresence[\s\S]{0,400}runnerFor\(roleName\)/);
   // 2) Opening a task from the epics tab must dismiss the epic drawer so the two sidebars don't both grab grid column 2 row 2.
   expect(kanbanSource).toMatch(/function openKanbanTask[\s\S]{0,800}kanbanEpicDrawerId = '';/);
-  // 3) DAG NODE_H bumped to 110 to fit the unified card (repo:role + 2-line title + meta + bottom-right id).
-  expect(kanbanSource).toContain("NODE_H = 110");
+  // 3) DAG NODE_H sized for the unified card (repo:role + 2-line title +
+  //    meta + bottom-right id). Was 92 → 110 → 132 as title-clamp 2nd line
+  //    kept colliding with the meta row on long titles.
+  expect(kanbanSource).toContain("NODE_H = 132");
+  expect(kanbanSource).not.toContain("NODE_H = 110");
   expect(kanbanSource).not.toContain("NODE_H = 92");
 });
 

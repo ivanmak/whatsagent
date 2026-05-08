@@ -634,10 +634,12 @@ function detectKanbanEpicCycle(ids, outgoing) {
 
 function renderKanbanEpicDagSvg(layout, sectionKey, sectionTasks) {
   const layers = layout.layers || [];
-  // EP-003 WA-013 fix-up (advisor msg #40): NODE_H bumped from 92 → 110
-  // because the unified card now carries a repo:role line + 2-line title
-  // clamp + meta + bottom-right id; 92px was cramped for long titles.
-  const NODE_W = 240, NODE_H = 110, H_GAP = 64, V_GAP = 18;
+  // NODE_H sized for: repo:role line (~14px) + 2-line title clamp (~34px) +
+  // meta row with bottom-right id (~22px including id row gap) + 10/22
+  // top/bottom padding + 6px inter-row gaps. Empirically 132px keeps the
+  // title's 2nd line visible above the meta row on long titles such as
+  // "EP-035 §1 — keystrokes.ts encoding library". Was 110px → 92px → 132px.
+  const NODE_W = 240, NODE_H = 132, H_GAP = 64, V_GAP = 18;
   const layerHeights = layers.map((tasks) => tasks.length * NODE_H + Math.max(0, tasks.length - 1) * V_GAP);
   const totalH = Math.max(NODE_H, ...layerHeights);
   const totalW = Math.max(NODE_W, layers.length * NODE_W + Math.max(0, layers.length - 1) * H_GAP);
