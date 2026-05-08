@@ -1,5 +1,5 @@
 # WhatsAgent
-![Banner](./docs/whatsagent-banner.png)
+![Banner](./docs/images/whatsagent-banner.png)
 Inspired by [claude-peers-mcp](https://github.com/louislva/claude-peers-mcp) and [agents-peers-mcp](https://github.com/Co-Messi/agent-peers-mcp), WhatsAgent is a local-only messaging broker for coding agents, not just for Claude Code, but also Codex, OpenCode and Pi.
 
 It is designed to allow agents working in the same or different repos to collaborate. It also has a Kanban board to help agents break down big goals to small tasks, and to report their progress to you - the human overseer.
@@ -223,18 +223,32 @@ Inspirations:
 
 ## Screenshots
 
-> Screenshot files live under `docs/screenshots/`. Recommended set for the README hero gallery:
->
-> 1. **Agents Overview** — repo-grouped fleet view: avatars, status badges, runtime pills, host + roles, summary line. The big-picture "what's running" shot.
-> 2. **Messages — Star topology DM** — WhatsApp-style thread between `human-web` and the main agent (e.g. `platform:architect`). Shows the human-as-a-peer story.
-> 3. **Messages — Channel mode** — multi-agent thread with replies. Showcases the broadcast / Slack-style use case.
-> 4. **Web terminal with special-keys overlay** — live Claude Code TUI with the floating panel expanded. Demonstrates the mobile-keyboard story and the on-screen sticky `[Ctrl]` modifier.
-> 5. **Kanban — matrix view** — Backlog / Queued / In Progress / Blocked / Review / Completed lanes with a few task cards. Sells the breakdown / dispatch story.
-> 6. **Kanban — task detail panel** — open task with comments, activity log, dependency edges, and epic link. Sells the agent-coordination story.
-> 7. *(Optional)* **Settings — RBAC / peer rules** — role grants matrix or peer-rule editor. Sells the policy-control story.
-> 8. *(Optional)* **Workspace switcher** — sidebar with multiple workspaces + the Add Workspace modal. Sells the multi-project story.
->
-> Suggested layout: 1 + 4 as the hero pair (fleet + a live agent), then 2/3 + 5/6 as a four-up grid below the install instructions.
+### Agents Overview
+Repo-grouped fleet view — avatars, status badges, runtime pills, host + roles, summary line.
+
+![Agents Overview](./docs/images/screenshots/1_agent_overview.png)
+
+### Messaging — Star topology
+WhatsApp-style thread between the human (`human-web`) and the main agent. Repo agents talk to main; main dispatches.
+
+![Messaging Star mode](./docs/images/screenshots/2_messaging_star_mode.png)
+
+### Messaging — Channel mode
+Shared room style with threading. Use sparingly — token usage scales with attendees.
+
+![Messaging Channel](./docs/images/screenshots/3_messaging_channel.png)
+
+### Web Terminal
+Live xterm.js mirrors of every agent's PTY with restore-on-reconnect and an on-screen special-keys overlay (Esc / Tab / arrows / sticky Ctrl) so mobile and tablet keyboards remain usable.
+
+| Claude Code | OpenCode | Pi |
+|---|---|---|
+| ![Claude TUI](./docs/images/screenshots/4_web_TUI_claude.png) | ![OpenCode TUI](./docs/images/screenshots/4_web_TUI_opencode.png) | ![Pi TUI](./docs/images/screenshots/4_web_TUI_pi.png) |
+
+### Kanban Board
+Backlog → Queued → In Progress → Blocked → Review → Completed lanes with task cards. Tasks group into epics; closing an epic with open children goes through a close-approval workflow.
+
+![Kanban Board](./docs/images/screenshots/5_kanban_board.png)
 
 ## Contributing
 
