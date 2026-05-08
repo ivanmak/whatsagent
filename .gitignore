@@ -1,0 +1,16 @@
+.DS_Store
+node_modules/
+dist/
+coverage/
+.env
+.env.local
+.whatsagent/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.log
+mockup/
+.opencode/
+.claude/
+.code-review-graph/
+HANDOFF.md

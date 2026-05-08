@@ -1,0 +1,11 @@
+export const KEY_ESC = "\x1b";
+export const KEY_TAB = "\t";
+export const KEY_SHIFT_TAB = "\x1b[Z";
+export const KEY_UP = "\x1b[A";
+export const KEY_DOWN = "\x1b[B";
+export const KEY_RIGHT = "\x1b[C";
+export const KEY_LEFT = "\x1b[D";
+export const KEY_PG_UP = "\x1b[5~";
+export const KEY_PG_DN = "\x1b[6~";
+export const KEY_HOME = "\x1b[H";
+export const KEY_END = "\x1b[F";
