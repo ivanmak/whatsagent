@@ -14,3 +14,5 @@ mockup/
 .claude/
 .code-review-graph/
 HANDOFF.md
+AGENTS.md
+memory/
