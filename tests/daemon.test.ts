@@ -277,11 +277,6 @@ async function expectRunnerInputBodyCap(control: RunnerControlForTest): Promise<
     headers: runnerControlHeaders(control, { "Content-Type": "application/json" }),
     body: streamUtf8(JSON.stringify({ data: "ok\n" })),
   });
-  if (underCap.status !== 200) {
-    const body = await underCap.text();
-    const health = await fetch(new URL("/health", control.control_url), { headers: runnerControlHeaders(control) }).then((r) => r.text()).catch((error) => `health-fetch-failed: ${String(error)}`);
-    throw new Error(`expectRunnerInputBodyCap under-cap POST expected 200, got ${underCap.status}\nbody: ${body}\nhealth: ${health}`);
-  }
   expect(underCap.status).toBe(200);
 }
 

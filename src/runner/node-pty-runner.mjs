@@ -244,26 +244,21 @@ function sendRunnerError(res, error) {
   return sendJson(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
 }
 
-function enforceBodySize(req, maxBytes = RUNNER_CONTROL_MAX_BODY_BYTES) {
-  const length = req.headers["content-length"];
-  if (length == null) return;
-  const size = Number(Array.isArray(length) ? length[0] : length);
-  if (Number.isFinite(size) && size > maxBytes) throw new RequestEntityTooLarge(size, maxBytes);
-}
-
 function readBody(req, maxBytes = RUNNER_CONTROL_MAX_BODY_BYTES) {
-  enforceBodySize(req, maxBytes);
   return new Promise((resolve, reject) => {
     let body = "";
     let size = 0;
+    let exceeded = false;
     let settled = false;
+    // Always drain the request body before settling, even when oversized.
+    // Responding 413 mid-stream leaves unread bytes on the keep-alive socket
+    // which corrupts the next request (Node's HTTP parser then returns an
+    // empty 400). Draining is bounded by node's request timeouts.
     req.on("data", (chunk) => {
-      if (settled) return;
       size += Buffer.byteLength(chunk);
       if (size > maxBytes) {
-        settled = true;
-        req.resume();
-        reject(new RequestEntityTooLarge(size, maxBytes));
+        exceeded = true;
+        body = "";
         return;
       }
       body += chunk;
@@ -271,7 +266,8 @@ function readBody(req, maxBytes = RUNNER_CONTROL_MAX_BODY_BYTES) {
     req.on("end", () => {
       if (settled) return;
       settled = true;
-      resolve(body);
+      if (exceeded) reject(new RequestEntityTooLarge(size, maxBytes));
+      else resolve(body);
     });
     req.on("error", (error) => {
       if (settled) return;
