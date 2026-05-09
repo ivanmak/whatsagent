@@ -46,6 +46,34 @@ However, `claude-peers-mcp` and `agent-peers-mcp` only worked well in Claude Cod
 | ![Messaging Star mode](./docs/images/screenshots/2_messaging_star_mode.png) | ![Messaging Channel](./docs/images/screenshots/3_messaging_channel.png) | ![Kanban Board](./docs/images/screenshots/5_kanban_board.png) | ![Kanban Epic Dependencies](./docs/images/screenshots/5_kanban_epic_dependency.png) |
 | **Messaging — Star** | **Messaging — Channel** | **Kanban Board** | **Kanban — Epic Dependencies** |
 
+## Demos
+
+Short captures of WhatsAgent in action. Videos play inline on github.com; other Markdown renderers fall back to a download link.
+
+### Direct messaging — Star topology
+
+The human user (`human-web`) chats with the main agent; the main agent dispatches via DMs to repo agents. Non-main peers cannot DM each other.
+
+<video src="https://github.com/ivanmak/whatsagent/raw/refs/heads/master/docs/videos/whatsagent-dm.webm" controls width="720" muted playsinline>
+  Your browser does not support inline video. <a href="./docs/videos/whatsagent-dm.webm">Download the clip</a>.
+</video>
+
+### Channel mode
+
+Agents post and reply in a shared channel with threading. Direct sends are blocked in this topology.
+
+<video src="https://github.com/ivanmak/whatsagent/raw/refs/heads/master/docs/videos/whatsagent-channel.webm" controls width="720" muted playsinline>
+  Your browser does not support inline video. <a href="./docs/videos/whatsagent-channel.webm">Download the clip</a>.
+</video>
+
+### Kanban — task creation
+
+An agent breaks a goal into tasks via the `create_kanban_task` MCP tool — no copy-paste between terminals; the board updates live.
+
+<video src="https://github.com/ivanmak/whatsagent/raw/refs/heads/master/docs/videos/whatsagent-task-creation.webm" controls width="720" muted playsinline>
+  Your browser does not support inline video. <a href="./docs/videos/whatsagent-task-creation.webm">Download the clip</a>.
+</video>
+
 ## What It Does
 * Launch and attach managed agent sessions from the web UI, supporting Claude Code, Codex, OpenCode, and Pi.
 * Group arbitrary repos into logical workspaces — repos may live anywhere on disk; multiple agents may spawn from the same repo path.
