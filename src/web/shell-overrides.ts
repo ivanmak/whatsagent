@@ -79,6 +79,8 @@ export const WEB_SHELL_OVERRIDES = String.raw`
     .rbac-mode-help strong { color: var(--text-strong); font-weight: 700; }
     .workspaces-overview-page { display: flex; flex-direction: column; width: 100%; min-width: 0; height: 100%; min-height: 0; }
     .workspace-overview-error { margin-bottom: 12px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--red) 38%, var(--border)); border-radius: 8px; background: color-mix(in srgb, var(--red) 8%, var(--surface)); color: var(--red); font-size: 13px; }
+    .agent-overview-warning { margin: 0 0 12px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--amber) 42%, var(--border)); border-radius: 8px; background: color-mix(in srgb, var(--amber) 10%, var(--surface)); color: var(--text-strong); font-size: 13px; line-height: 1.45; }
+    .agent-overview-warning strong { color: var(--amber); }
     :root[data-sidebar="collapsed"] .workspace-switcher { margin: 8px; }
     :root[data-sidebar="collapsed"] .workspace-switcher-trigger { grid-template-columns: 28px; justify-content: center; padding: 7px; }
     :root[data-sidebar="collapsed"] .workspace-switcher-copy, :root[data-sidebar="collapsed"] .workspace-caret { display: none; }

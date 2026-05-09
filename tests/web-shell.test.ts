@@ -1791,6 +1791,11 @@ test("renderWebShell includes multi-repo agent overview grouping hooks", () => {
   expect(agentsSource).toContain("repo-group");
   expect(agentsSource).toContain("repo-group-head");
   expect(agentsSource).toContain("data-action=\"open-add-agent\"");
+  // Star-mode-no-main warning banner (rendered when policy=star + no mainRole + at least one agent).
+  expect(agentsSource).toContain("function starModeMissingMainBanner()");
+  expect(agentsSource).toContain("agent-overview-warning");
+  expect(agentsSource).toContain("No main agent set.");
+  expect(html).toContain(".agent-overview-warning");
   expect(agentsSource).toContain("data-repo-id=\"");
   expect(agentsSource).toContain("no agents yet");
   expect(agentsSource).toContain("repo-group-list");

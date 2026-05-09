@@ -232,13 +232,28 @@ function sortLabel(field, dir) {
 export function renderAgentsOverview() {
   disposeXterm();
   const rows = repoGroupedAgentRows();
+  const banner = starModeMissingMainBanner();
   const previousAgentScroll = document.querySelector('.agent-list-overview')?.scrollTop || 0;
   // All dynamic values are run through esc() before interpolation; pattern matches the rest of this file.
-  $('agentTabContent').innerHTML = '<div class="agent-overview agent-list-overview">' + agentsOverviewHeader() + rows + '</div>';
+  $('agentTabContent').innerHTML = '<div class="agent-overview agent-list-overview">' + agentsOverviewHeader() + banner + rows + '</div>';
   if (previousAgentScroll) requestAnimationFrame(() => {
     const next = document.querySelector('.agent-list-overview');
     if (next) next.scrollTop = previousAgentScroll;
   });
+}
+
+function starModeMissingMainBanner() {
+  const state = getState();
+  const mode = state.policy?.mode || '';
+  if (mode !== 'star') return '';
+  if (state.mainRole?.id) return '';
+  if (!(state.roles || []).length) return '';
+  return '<div class="agent-overview-warning" role="status">'
+    + '<strong>No main agent set.</strong> '
+    + 'Star topology routes every direct message through a main agent. '
+    + 'Until you mark one, agents cannot send DMs to each other and broadcasts will fail. '
+    + 'Open an agent overflow menu and choose Set main.'
+    + '</div>';
 }
 
 function agentsOverviewHeader() {
