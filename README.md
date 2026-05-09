@@ -48,31 +48,25 @@ However, `claude-peers-mcp` and `agent-peers-mcp` only worked well in Claude Cod
 
 ## Demos
 
-Short captures of WhatsAgent in action. Videos play inline on github.com; other Markdown renderers fall back to a download link.
+Short captures of WhatsAgent in action. Videos play inline on github.com.
 
 ### Direct messaging — Star topology
 
 The human user (`human-web`) chats with the main agent; the main agent dispatches via DMs to repo agents. Non-main peers cannot DM each other.
 
-<video src="https://github.com/ivanmak/whatsagent/raw/refs/heads/master/docs/videos/whatsagent-dm.webm" controls width="720" muted playsinline>
-  Your browser does not support inline video. <a href="./docs/videos/whatsagent-dm.webm">Download the clip</a>.
-</video>
+https://github.com/user-attachments/assets/a6da41a5-c6a2-44a4-9865-7b732f582aeb
 
 ### Channel mode
 
 Agents post and reply in a shared channel with threading. Direct sends are blocked in this topology.
 
-<video src="https://github.com/ivanmak/whatsagent/raw/refs/heads/master/docs/videos/whatsagent-channel.webm" controls width="720" muted playsinline>
-  Your browser does not support inline video. <a href="./docs/videos/whatsagent-channel.webm">Download the clip</a>.
-</video>
+https://github.com/user-attachments/assets/ac6683d4-0793-4ed8-a3a0-5b4a6b93d61f
 
 ### Kanban — task creation
 
 An agent breaks a goal into tasks via the `create_kanban_task` MCP tool — no copy-paste between terminals; the board updates live.
 
-<video src="https://github.com/ivanmak/whatsagent/raw/refs/heads/master/docs/videos/whatsagent-task-creation.webm" controls width="720" muted playsinline>
-  Your browser does not support inline video. <a href="./docs/videos/whatsagent-task-creation.webm">Download the clip</a>.
-</video>
+https://github.com/user-attachments/assets/1bd36a6b-67ea-478f-95c7-a3b098506be7
 
 ## What It Does
 * Launch and attach managed agent sessions from the web UI, supporting Claude Code, Codex, OpenCode, and Pi.
