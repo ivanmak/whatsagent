@@ -1995,16 +1995,24 @@ test("Codex launches receive MCP tools and delay nudges while a draft is active"
         body: JSON.stringify({ data: "\r" }),
       });
       expect(clearDraft.ok).toBe(true);
-      await new Promise((resolve) => setTimeout(resolve, 1_300));
+
+      const draftClearDeadline = Date.now() + 5_000;
+      let pendingNudge: { submitted_at?: string; blocked_by_draft?: boolean } | undefined;
+      while (Date.now() < draftClearDeadline) {
+        const runners = await fetch(`${daemon.url}${wsBase}/runners`).then((r) => r.json()) as Array<{ role: string; pending_nudge?: { submitted_at?: string; blocked_by_draft?: boolean } }>;
+        pendingNudge = runners.find((runner) => runner.role === "serviceA")?.pending_nudge;
+        if (pendingNudge && pendingNudge.blocked_by_draft === undefined) break;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+
       const afterDraftClear = await fetch(`${daemon.url}${wsBase}/roles-by-id/serviceA%3AserviceA/output?cursor=0`).then((r) => r.json()) as { events: Array<{ data: string }> };
       const afterDraftClearText = afterDraftClear.events.map((event) => event.data).join("");
       expect(afterDraftClearText).not.toContain("WhatsAgent check_messages MCP tool");
       expect(afterDraftClearText).not.toContain("codex inbox payload");
 
-      const pendingRunners = await fetch(`${daemon.url}${wsBase}/runners`).then((r) => r.json()) as Array<{ role: string; pending_nudge?: { submitted_at?: string; blocked_by_draft?: boolean } }>;
-      expect(pendingRunners.find((runner) => runner.role === "serviceA")?.pending_nudge).toBeTruthy();
-      expect(pendingRunners.find((runner) => runner.role === "serviceA")?.pending_nudge?.blocked_by_draft).toBeUndefined();
-      expect(pendingRunners.find((runner) => runner.role === "serviceA")?.pending_nudge?.submitted_at).toBeUndefined();
+      expect(pendingNudge).toBeTruthy();
+      expect(pendingNudge?.blocked_by_draft).toBeUndefined();
+      expect(pendingNudge?.submitted_at).toBeUndefined();
 
       insertTestLaunchToken(root, "serviceA", launch.runner.session_id, "codex-token");
       const checked = await fetch(`${daemon.url}/api/v1/agent/check-messages`, {
