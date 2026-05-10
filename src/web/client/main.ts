@@ -569,6 +569,10 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
 
     applyPreferences();
 
+    window.matchMedia?.('(prefers-color-scheme: dark)')?.addEventListener?.('change', () => {
+      if (prefs.theme === 'auto') applyPreferences();
+    });
+
     function pageMeta() {
       return {
         overview: ['Overview', 'Fleet health and queue snapshot'],
