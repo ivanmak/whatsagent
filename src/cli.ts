@@ -33,6 +33,12 @@ if (cliAuthCookie) {
   }) as typeof fetch;
 }
 
+const CONTROL_CHARS_RE = /[\x00-\x1f\x7f-\x9f]/g;
+export function stripControlChars(value: unknown): string {
+  return String(value ?? "").replace(CONTROL_CHARS_RE, "");
+}
+const safe = stripControlChars;
+
 function csrfTokenFromCookie(cookie: string): string | null {
   for (const part of cookie.split(";")) {
     const [rawKey, ...rawValue] = part.trim().split("=");
@@ -200,7 +206,7 @@ async function cmdRoles(args: string[]): Promise<void> {
   }
   for (const role of status.roles) {
     const marker = status.mainRole?.id === role.id ? "*" : " ";
-    console.log(`${marker} ${role.name}\t${role.path}\t${role.host_default}${role.git_root ? `\tgit=${role.git_root}` : ""}`);
+    console.log(`${marker} ${safe(role.name)}\t${safe(role.path)}\t${safe(role.host_default)}${role.git_root ? `\tgit=${safe(role.git_root)}` : ""}`);
   }
 }
 
@@ -216,7 +222,7 @@ async function cmdSetMain(args: string[]): Promise<void> {
   });
   const body = await res.json().catch(() => ({})) as { ok?: boolean; role?: { name: string }; error?: string };
   if (!res.ok || body.ok === false || !body.role) throw new Error(body.error ?? `set-main failed (HTTP ${res.status})`);
-  console.log(`Main role set to ${body.role.name}`);
+  console.log(`Main role set to ${safe(body.role.name)}`);
 }
 
 async function cmdStatus(args: string[]): Promise<void> {
@@ -224,13 +230,13 @@ async function cmdStatus(args: string[]): Promise<void> {
   const workspaceId = await selectedWorkspaceId(url, args);
   const status = await workspaceStatus(url, workspaceId);
   const current = await fetch(`${url}/api/v1/workspaces/current`).then((r) => r.json()).catch(() => ({})) as { current?: { id: string } | null };
-  console.log(`fleet: ${status.fleet.name}`);
-  console.log(`workspace: ${status.currentWorkspace.name}${current.current?.id === workspaceId ? " (current)" : ""}`);
-  console.log(`ui:    http://${status.ui.host}:${status.ui.port}`);
-  console.log(`policy: ${status.policy.mode}`);
-  console.log(`default runtime: ${status.runtime.globalDefaultHost ?? "not set"}`);
+  console.log(`fleet: ${safe(status.fleet.name)}`);
+  console.log(`workspace: ${safe(status.currentWorkspace.name)}${current.current?.id === workspaceId ? " (current)" : ""}`);
+  console.log(`ui:    http://${safe(status.ui.host)}:${status.ui.port}`);
+  console.log(`policy: ${safe(status.policy.mode)}`);
+  console.log(`default runtime: ${status.runtime.globalDefaultHost ? safe(status.runtime.globalDefaultHost) : "not set"}`);
   console.log(`roles: ${status.roles.length}`);
-  console.log(`main:  ${status.mainRole?.name ?? "not set"}`);
+  console.log(`main:  ${status.mainRole?.name ? safe(status.mainRole.name) : "not set"}`);
   console.log(`daemon home: ${defaultDaemonHome()}`);
 }
 
@@ -380,7 +386,7 @@ async function cmdStop(args: string[]): Promise<void> {
       // EP-DEC-RUN WA-003 (advisor msg #3): print displayId when present
       // so two same-bare-name agents in different repos are distinguishable.
       // Falls back to bare role for legacy pre-cutover metadata files.
-      console.log(`Stopping ${r.workspaceName ?? r.workspaceId}/${r.displayId || r.role} (pid ${r.runnerPid})...`);
+      console.log(`Stopping ${safe(r.workspaceName ?? r.workspaceId)}/${safe(r.displayId || r.role)} (pid ${r.runnerPid})...`);
       const result = await killRunner(r.runnerPid, { timeoutMs: 5000 });
       if (result.alive) console.log(`  failed to stop pid ${r.runnerPid} after SIGKILL`);
     }
@@ -408,7 +414,7 @@ async function cmdStopAll(): Promise<void> {
       // EP-DEC-RUN WA-003 (advisor msg #3): print displayId when present
       // so two same-bare-name agents in different repos are distinguishable.
       // Falls back to bare role for legacy pre-cutover metadata files.
-      console.log(`Stopping ${r.workspaceName ?? r.workspaceId}/${r.displayId || r.role} (pid ${r.runnerPid})...`);
+      console.log(`Stopping ${safe(r.workspaceName ?? r.workspaceId)}/${safe(r.displayId || r.role)} (pid ${r.runnerPid})...`);
       await killRunner(r.runnerPid, { timeoutMs: 5000 });
     }
     await rmIfExists(r.metadataPath);
@@ -455,8 +461,8 @@ async function promptStopAction(daemonPid: number, runners: Array<{ workspaceNam
     // agents are distinguishable.
     console.log("  Workspace        Display id           PID       Alive");
     for (const r of runners) {
-      const ws = (r.workspaceName ?? r.workspaceId).slice(0, 16).padEnd(16);
-      const id = (r.displayId || r.role).slice(0, 20).padEnd(20);
+      const ws = safe(r.workspaceName ?? r.workspaceId).slice(0, 16).padEnd(16);
+      const id = safe(r.displayId || r.role).slice(0, 20).padEnd(20);
       const pid = String(r.runnerPid).padEnd(8);
       const alive = r.runnerAlive ? "yes" : "no";
       console.log(`  ${ws} ${id}  ${pid}  ${alive}`);
@@ -536,7 +542,7 @@ async function cmdWorkspaceList(args: string[]): Promise<void> {
   console.log("  ID                                Name                   Status");
   for (const ws of body.workspaces) {
     const marker = ws.id === body.currentWorkspaceId ? "*" : " ";
-    console.log(`${marker} ${ws.id.padEnd(32)}  ${ws.name.slice(0, 22).padEnd(22)} ${ws.status}`);
+    console.log(`${marker} ${ws.id.padEnd(32)}  ${safe(ws.name).slice(0, 22).padEnd(22)} ${safe(ws.status)}`);
   }
 }
 
@@ -567,7 +573,7 @@ async function cmdWorkspaceAdd(args: string[]): Promise<void> {
   });
   const body = await res.json() as { ok: boolean; workspace?: WorkspaceRow; error?: string };
   if (!res.ok || !body.ok) throw new Error(body.error ?? `add failed (HTTP ${res.status})`);
-  console.log(`Added workspace ${body.workspace!.name} (${body.workspace!.id}) [rbac=${rbacMode}].`);
+  console.log(`Added workspace ${safe(body.workspace!.name)} (${body.workspace!.id}) [rbac=${rbacMode}].`);
 }
 
 async function resolveWorkspaceId(daemonUrl: string, nameOrId: string, opts: { includeTrash?: boolean } = {}): Promise<string> {
@@ -674,7 +680,7 @@ async function cmdWorkspaceEdit(args: string[]): Promise<void> {
   });
   const body = await res.json() as { ok: boolean; workspace?: WorkspaceRow; error?: string };
   if (!res.ok || !body.ok) throw new Error(body.error ?? `edit failed (HTTP ${res.status})`);
-  console.log(`Updated workspace ${body.workspace!.name} (${body.workspace!.id}).`);
+  console.log(`Updated workspace ${safe(body.workspace!.name)} (${body.workspace!.id}).`);
 }
 
 async function listRepos(url: string, wsId: string): Promise<ApiRepo[]> {
@@ -715,7 +721,7 @@ async function cmdWorkspaceRepoAdd(args: string[]): Promise<void> {
   });
   const body = await res.json() as { ok: boolean; repo?: ApiRepo; error?: string };
   if (!res.ok || !body.ok) throw new Error(body.error ?? `add repo failed (HTTP ${res.status})`);
-  console.log(`Added repo ${body.repo!.name} (${body.repo!.id}) at ${body.repo!.absolutePath}.`);
+  console.log(`Added repo ${safe(body.repo!.name)} (${body.repo!.id}) at ${safe(body.repo!.absolutePath)}.`);
 }
 
 async function cmdWorkspaceRepoList(args: string[]): Promise<void> {
@@ -728,7 +734,7 @@ async function cmdWorkspaceRepoList(args: string[]): Promise<void> {
   console.log("  ID                                    Name                Roles  Path");
   for (const repo of repos) {
     const missing = repo.missingAt ? " [missing]" : "";
-    console.log(`  ${repo.id.padEnd(36)}  ${repo.name.slice(0, 18).padEnd(18)}  ${String(repo.roleCount).padEnd(5)}  ${repo.absolutePath}${missing}`);
+    console.log(`  ${repo.id.padEnd(36)}  ${safe(repo.name).slice(0, 18).padEnd(18)}  ${String(repo.roleCount).padEnd(5)}  ${safe(repo.absolutePath)}${missing}`);
   }
 }
 
@@ -742,7 +748,7 @@ async function cmdWorkspaceRepoRemove(args: string[]): Promise<void> {
   const res = await fetch(`${url}/api/v1/workspaces/${wsId}/repos/${repoId}`, { method: "DELETE" });
   const body = await res.json() as { ok: boolean; error?: string };
   if (!res.ok || !body.ok) throw new Error(body.error ?? `remove repo failed (HTTP ${res.status})`);
-  console.log(`Removed repo ${repo.name} (${repoId}).`);
+  console.log(`Removed repo ${safe(repo.name)} (${repoId}).`);
 }
 
 async function listScanDirs(url: string, wsId: string): Promise<ApiScanDir[]> {
@@ -784,7 +790,7 @@ async function cmdWorkspaceScanDirAdd(args: string[]): Promise<void> {
   const body = await res.json() as { ok: boolean; scanDir?: ApiScanDir; error?: string };
   if (!res.ok || !body.ok) throw new Error(body.error ?? `add scan-dir failed (HTTP ${res.status})`);
   const startup = body.scanDir!.scanOnStartup ? " [scan-on-startup]" : "";
-  console.log(`Added scan dir ${body.scanDir!.absolutePath} (${body.scanDir!.id})${startup}.`);
+  console.log(`Added scan dir ${safe(body.scanDir!.absolutePath)} (${body.scanDir!.id})${startup}.`);
 }
 
 async function cmdWorkspaceScanDirList(args: string[]): Promise<void> {
@@ -798,7 +804,7 @@ async function cmdWorkspaceScanDirList(args: string[]): Promise<void> {
   for (const scan of scans) {
     const startup = scan.scanOnStartup ? "yes" : "no";
     const last = scan.lastScanAt ?? "never";
-    console.log(`  ${scan.id.padEnd(36)}  ${startup.padEnd(7)}  ${last.padEnd(20)}  ${scan.absolutePath}`);
+    console.log(`  ${scan.id.padEnd(36)}  ${startup.padEnd(7)}  ${safe(last).padEnd(20)}  ${safe(scan.absolutePath)}`);
   }
 }
 
@@ -812,16 +818,16 @@ async function cmdWorkspaceScanDirRemove(args: string[]): Promise<void> {
   const res = await fetch(`${url}/api/v1/workspaces/${wsId}/scan-dirs/${scan.id}`, { method: "DELETE" });
   const body = await res.json() as { ok: boolean; error?: string };
   if (!res.ok || !body.ok) throw new Error(body.error ?? `remove scan-dir failed (HTTP ${res.status})`);
-  console.log(`Removed scan dir ${scan.absolutePath} (${scan.id}).`);
+  console.log(`Removed scan dir ${safe(scan.absolutePath)} (${scan.id}).`);
 }
 
 async function runScan(url: string, wsId: string, scan: ApiScanDir): Promise<void> {
   const res = await fetch(`${url}/api/v1/workspaces/${wsId}/scan-dirs/${scan.id}/scan`, { method: "POST" });
   const body = await res.json() as { ok: boolean; added?: ApiRepo[]; skipped?: string[]; error?: string };
   if (!res.ok || !body.ok) throw new Error(body.error ?? `scan failed (HTTP ${res.status})`);
-  console.log(`Scanned ${scan.absolutePath}: ${body.added?.length ?? 0} added, ${body.skipped?.length ?? 0} skipped.`);
-  for (const repo of body.added ?? []) console.log(`  + ${repo.name}  ${repo.absolutePath}`);
-  for (const skipped of body.skipped ?? []) console.log(`  ~ skipped ${skipped}`);
+  console.log(`Scanned ${safe(scan.absolutePath)}: ${body.added?.length ?? 0} added, ${body.skipped?.length ?? 0} skipped.`);
+  for (const repo of body.added ?? []) console.log(`  + ${safe(repo.name)}  ${safe(repo.absolutePath)}`);
+  for (const skipped of body.skipped ?? []) console.log(`  ~ skipped ${safe(skipped)}`);
 }
 
 async function cmdWorkspaceScan(args: string[]): Promise<void> {
@@ -875,7 +881,7 @@ async function cmdRoleAdd(args: string[]): Promise<void> {
   });
   const body = await res.json() as { ok: boolean; role?: ApiRole; error?: string };
   if (!res.ok || !body.ok) throw new Error(body.error ?? `add role failed (HTTP ${res.status})`);
-  console.log(`Added role ${body.role!.displayId} (${body.role!.id}).`);
+  console.log(`Added role ${safe(body.role!.displayId)} (${body.role!.id}).`);
 }
 
 async function cmdRoleList(args: string[]): Promise<void> {
@@ -887,7 +893,7 @@ async function cmdRoleList(args: string[]): Promise<void> {
   if (roles.length === 0) { console.log("No roles."); return; }
   console.log("  ID                                    Display id                 Host default");
   for (const role of roles) {
-    console.log(`  ${role.id.padEnd(36)}  ${role.displayId.padEnd(24)}  ${role.hostDefault ?? "(none)"}`);
+    console.log(`  ${role.id.padEnd(36)}  ${safe(role.displayId).padEnd(24)}  ${role.hostDefault ? safe(role.hostDefault) : "(none)"}`);
   }
 }
 
@@ -904,7 +910,7 @@ async function cmdRoleRemove(args: string[]): Promise<void> {
   const res = await fetch(`${url}/api/v1/workspaces/${wsId}/roles-by-id/${role.id}`, { method: "DELETE" });
   const body = await res.json() as { ok: boolean; error?: string };
   if (!res.ok || !body.ok) throw new Error(body.error ?? `remove role failed (HTTP ${res.status})`);
-  console.log(`Removed role ${role.displayId} (${role.id}).`);
+  console.log(`Removed role ${safe(role.displayId)} (${role.id}).`);
 }
 
 // ---- config get/set ----------------------------------------------------
