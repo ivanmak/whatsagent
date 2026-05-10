@@ -2594,10 +2594,13 @@ function publicRunnerStatus(runner: RunnerStatus): PublicRunnerStatus {
   return safeRunner;
 }
 
+const RUNNER_CONTROL_TIMEOUT_MS = 10_000;
+
 async function fetchRunnerControlUrl(controlUrl: string, controlSecret: string | null | undefined, path: string, init: RequestInit = {}): Promise<Response> {
   return fetch(new URL(path, controlUrl), {
     ...init,
     headers: runnerControlHeaders(controlSecret, init.headers),
+    signal: init.signal ?? AbortSignal.timeout(RUNNER_CONTROL_TIMEOUT_MS),
   });
 }
 
