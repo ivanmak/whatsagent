@@ -1849,6 +1849,15 @@ test("EP-037 WA-212: agent config pages use separate sub-view routes", () => {
   expect(agentsSource).toContain("Delete agent</button>");
   expect(agentsSource).toContain("agentPageMode === 'config'");
   expect(shellOverridesSource).toContain(".agent-config-page { max-width: 980px;");
+  // EP-037 follow-up: the config/create pages keep the agent tab bar visible,
+  // the body scrolls inside #content, and the repo value on the edit page is a
+  // compact readonly chip (not the big .thread-empty empty-state box).
+  expect(clientSource).toContain("agentTabsHtml: () => agentTabs()");
+  expect(agentsSource).toContain("function agentTabsHtml() { return ctx().agentTabsHtml(); }");
+  expect(agentsSource).toContain('<div class="agent-config-tabbar">\' + agentTabsHtml() + \'</div>');
+  expect(agentsSource).toContain('<div class="agent-config-readonly">');
+  expect(shellOverridesSource).toContain(".content:has(.agent-config-page) { padding: 0; overflow-y: auto; }");
+  expect(shellOverridesSource).toContain(".agent-config-tabbar { position: sticky; top: 0;");
 });
 
 test("Edit Agent flow targets /roles-by-id PATCH (EP-DEC-FIX B1)", () => {
@@ -1903,7 +1912,7 @@ test("renderWebShell includes role display id hooks for cards and messages", () 
   expect(script).toContain("const addr = roleDisplayId(role);");
   expect(script).toContain("esc(addr)");
   expect(agentsSource).toContain("function roleDisplayId(role) { return ctx().roleDisplayId(role); }");
-  expect(agentsSource).toContain("agentCardBadges(online, missing, false)");
+  expect(agentsSource).toContain("data-action=\"open-agent-edit\" data-role=\"' + esc(addr) + '\"");
   expect(agentsSource).toContain("role.repo_name || role.repoName || ''");
   expect(agentsSource).toContain("const addr = roleDisplayId(role);");
 });
@@ -2891,7 +2900,8 @@ test("EP-037 WA-213 agent overview uses merged archive-style table", () => {
   expect(daemonSource).toContain("summary: sessionByRoleId.get(agent.id)?.summary ?? \"\"");
   expect(shellOverridesSource).toContain(".agents-archive-board");
   expect(shellOverridesSource).toContain(".agents-archive-head, .agents-agent-row");
-  expect(shellOverridesSource).toContain(".agents-agent-description, .agents-agent-summary");
+  expect(shellOverridesSource).toContain(".agents-agent-summary { overflow: hidden; color: var(--text); font-size: 12.5px;");
+  expect(shellOverridesSource).toContain("-webkit-line-clamp: 2;");
 });
 
 test("EP-035 WA-193: special keys overlay mounts only for live terminal panels", () => {

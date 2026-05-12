@@ -2338,6 +2338,7 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
         setActiveTerminal: (next) => { activeTerminal = next; agentsSubView = next === 'overview' ? 'overview' : 'terminal'; agentsConfigRole = ''; },
         getAgentsSubView: () => agentsSubView,
         setAgentsSubView: (next, role = '') => { agentsSubView = next || 'overview'; agentsConfigRole = role || ''; if (agentsSubView !== 'terminal') activeTerminal = 'overview'; },
+        agentTabsHtml: () => agentTabs(),
         showPage: (next) => showPage(next),
         getTabId: () => TAB_ID,
         appendTerminal,

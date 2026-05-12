@@ -20,6 +20,7 @@ function getPage() { return ctx().getPage(); }
 function getSelectedSettingsTab() { return ctx().getSelectedSettingsTab(); }
 function getActiveTerminal() { return ctx().getActiveTerminal(); }
 function setAgentsSubView(next, role) { ctx().setAgentsSubView(next, role); }
+function agentTabsHtml() { return ctx().agentTabsHtml(); }
 function updateUrl(replace) { ctx().updateUrl(replace); }
 function getOpenLaunchMenuRole() { return ctx().getOpenLaunchMenuRole(); }
 function setOpenLaunchMenuRole(value) { ctx().setOpenLaunchMenuRole(value); }
@@ -373,15 +374,16 @@ function agentCard(role) {
   const roleChips = assignedRoles.length ? assignedRoles.map(name => badge(name, '', false)).join('') : '<span class="agent-card-roles-empty">&mdash;</span>';
   const description = String(role.persona?.description || '').trim();
   const currentSummary = String(role.summary || '').trim();
-  const runtimeHost = roleRuntime(role);
-  const runtime = '<span class="agent-table-runtime mono">' + (runtimeHost ? peerIcon(runtimeHost, 14) : '') + esc(roleRuntimeLabel(role)) + '</span>';
+  // No host icon / status badge in the name cell — presence is on the avatar
+  // dot, runtime is plain text.
+  const runtime = '<span class="agent-table-runtime mono">' + esc(roleRuntimeLabel(role)) + '</span>';
   const avatar = '<div class="agent-table-avatar">' + roleAvatarWithPresence(role, 34) + (isMain ? '<span class="agent-main-under-badge">main</span>' : '') + '</div>';
   return '<div class="archive-item agent-card agents-agent-row ' + (missing ? 'missing' : '') + '" data-action="open-agent-edit" data-role="' + esc(addr) + '" role="button" tabindex="0">'
     + '<div class="agents-agent-avatar-cell">' + avatar + '</div>'
-    + '<div class="archive-title agents-agent-name"><strong ' + truncatedAttrs(addr) + '>' + esc(addr) + '</strong>' + runtime + agentCardBadges(online, missing, false) + staleRunnerBanner(runner) + '</div>'
+    + '<div class="archive-title agents-agent-name"><strong ' + truncatedAttrs(addr) + '>' + esc(addr) + '</strong>' + runtime + staleRunnerBanner(runner) + '</div>'
     + '<div class="agent-card-rbac-chips agents-agent-roles">' + roleChips + '</div>'
     + '<div class="agents-agent-description archive-muted" ' + truncatedAttrs(description) + '>' + (description ? esc(description) : '&mdash;') + '</div>'
-    + '<div class="agent-card-summary agents-agent-summary archive-muted ' + (currentSummary ? '' : 'empty') + '" ' + truncatedAttrs(currentSummary) + '>' + (currentSummary ? esc(currentSummary) : 'offline — no summary') + '</div>'
+    + '<div class="agent-card-summary agents-agent-summary ' + (currentSummary ? '' : 'empty') + '" ' + truncatedAttrs(currentSummary) + '>' + (currentSummary ? esc(currentSummary) : 'offline — no summary') + '</div>'
     + '<div class="workspace-card-actions agent-card-actions agents-agent-actions">' + rowRuntimeActions(role, runner, missing) + overflow + '</div>'
     + overflowMenu
   + '</div>';
@@ -1393,6 +1395,7 @@ export function renderAgentCreatePage() {
     ? settingsDropdown('agent-create-repo', addAgentRepoId, repoOptions, { inputAttrs: 'data-add-agent-repo-page' })
     : '<div class="thread-empty">Add a repository before adding agents.</div>';
   $('content').innerHTML = '<div class="agent-config-page agent-config-create">'
+    + '<div class="agent-config-tabbar">' + agentTabsHtml() + '</div>'
     + '<div class="agent-config-crumbs"><button type="button" class="btn secondary small" data-action="agent-config-cancel">← Agents</button><span>New agent</span></div>'
     + '<section class="card settings-wide agent-config-section"><div class="section-head"><div><h2>Identity</h2><p>Repository, name, and default runtime.</p></div></div>'
       + settingRow('Repository', 'Which repo this agent belongs to.', repoSelect)
@@ -1436,10 +1439,11 @@ export function renderAgentConfigPage(roleAddress) {
     ? personaSectionHtml('edit', agentConfigPersona)
     : '<section class="card settings-wide agent-config-section"><div class="section-head"><div><h2>Persona</h2><p>What this agent is for — shown to peers in list_peers and the kanban assignee picker.</p></div></div><div class="agent-persona-note' + (agentConfigPersonaState === 'error' ? ' error' : '') + '">' + (agentConfigPersonaState === 'error' ? 'Failed to load the saved persona — reopen this page to retry.' : 'Loading saved persona…') + '</div></section>';
   $('content').innerHTML = '<div class="agent-config-page">'
+    + '<div class="agent-config-tabbar">' + agentTabsHtml() + '</div>'
     + '<div class="agent-config-crumbs"><button type="button" class="btn secondary small" data-action="agent-config-cancel">← Agents</button><span>' + esc(addr) + '</span></div>'
     + agentConfigHeader(role)
     + '<section class="card settings-wide agent-config-section"><div class="section-head"><div><h2>Identity</h2><p>Rename the agent or change its default runtime.</p></div></div>'
-      + settingRow('Repository', 'Repository is fixed after creation.', '<div class="thread-empty">' + esc(role.repo_name || role.repoName || '') + '</div>')
+      + settingRow('Repository', 'Repository is fixed after creation.', '<div class="agent-config-readonly">' + esc(role.repo_name || role.repoName || '') + '</div>')
       + settingRow('Name', 'Unique within the repo.', '<input id="agentEditPageName" class="setting-input" type="text" autocomplete="off" value="' + esc(role.name || '') + '" />')
       + settingRow('Default runtime', 'Global default means host_default = null.', runtimePillsSection('agent-edit', agentEditRuntime))
     + '</section>'
