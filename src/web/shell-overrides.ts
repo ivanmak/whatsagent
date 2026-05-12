@@ -1170,11 +1170,23 @@ export const WEB_SHELL_OVERRIDES = String.raw`
     .agent-config-head-copy p, .agent-config-kicker { margin: 3px 0 0; color: var(--muted); font-family: var(--font-mono); font-size: 11px; }
     .agent-config-head-actions { flex: 0 0 auto; }
     .agent-config-section { margin-bottom: 14px; padding: 16px; }
-    .agent-config-persona-placeholder .thread-empty { margin: 0; }
+    .agent-persona-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 14px; color: var(--muted); font-size: 12px; }
+    .agent-persona-tools > span:first-child { color: var(--text-strong); font-weight: 850; }
+    .agent-persona-note { color: var(--muted); font-size: 11px; }
+    .agent-persona-note.error { color: var(--red); }
+    .agent-persona-budget { margin: 0 0 12px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--amber) 42%, var(--border)); border-radius: 10px; background: color-mix(in srgb, var(--amber) 10%, var(--surface)); color: var(--text-strong); font-size: 12px; font-weight: 750; }
+    .agent-persona-budget.hidden, .agent-persona-field-warning.hidden { display: none; }
+    .agent-persona-row { display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr); gap: 12px; align-items: start; padding: 9px 0; border-top: 1px solid var(--border-soft); }
+    .agent-persona-row label { color: var(--text-strong); font-size: 12px; font-weight: 850; }
+    .agent-persona-row label .hint { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; font-weight: 600; line-height: 1.3; }
+    .agent-persona-field-warning { display: inline-flex; margin-left: 6px; color: var(--amber); font-size: 10px; font-weight: 900; }
+    .agent-persona-input { width: 100%; }
+    textarea.agent-persona-input { min-height: 96px; resize: vertical; line-height: 1.35; }
+    #agentEditPersona_extra_prompt, #addAgentPersona_extra_prompt { min-height: 132px; }
     .agent-config-page .settings-save-bar { position: sticky; bottom: 0; z-index: 15; margin: 18px -18px -88px; padding: 12px 18px; border-top: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(8px); }
     .agent-config-page .workspace-add-status { margin-top: 10px; color: var(--muted); font-size: 12px; }
     .agent-config-page .workspace-add-status.error { color: var(--red); }
-    @media (max-width: 760px) { .agent-config-page { padding-inline: 12px; } .agent-config-head { align-items: flex-start; } .agent-config-head-actions { margin-left: auto; } }
+    @media (max-width: 760px) { .agent-config-page { padding-inline: 12px; } .agent-config-head { align-items: flex-start; } .agent-config-head-actions { margin-left: auto; } .agent-persona-row { grid-template-columns: 1fr; gap: 6px; } }
 
     .agent-avatar-identicon { display: inline-flex; }
     .agent-avatar-identicon .agent-identicon { display: block; border-radius: 6px; border: 1px solid var(--border); overflow: hidden; }

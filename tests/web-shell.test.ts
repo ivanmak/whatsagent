@@ -1826,7 +1826,7 @@ test("renderWebShell includes Add Agent repo dropdown hooks", () => {
   expect(agentsSource).toContain("data-add-agent-repo");
   expect(agentsSource).toContain("document.querySelector('[data-add-agent-repo-page]')?.value || document.querySelector('[data-add-agent-repo]')?.value");
   expect(agentsSource).toContain("repoId is required");
-  expect(agentsSource).toContain("JSON.stringify({ repoId, name, host: runtime === 'default' ? null : runtime })");
+  expect(agentsSource).toContain("JSON.stringify({ repoId, name, host: runtime === 'default' ? null : runtime, persona: personaValuesFromInputs('add') })");
   expect(agentsSource).toContain("workspaceFetch('/roles-by-id'");
   expect(agentsSource).not.toContain("workspaceFetch('/roles',");
   expect(agentsSource).not.toContain("const paths = Array.from(new Set((state.roles || []).map(r => r.path)");
@@ -1841,7 +1841,8 @@ test("EP-037 WA-212: agent config pages use separate sub-view routes", () => {
   expect(clientSource).toContain("setAgentsSubView: (next, role = '')");
   expect(agentsSource).toContain("export function renderAgentCreatePage()");
   expect(agentsSource).toContain("export function renderAgentConfigPage(roleAddress)");
-  expect(agentsSource).toContain("Persona profile editor not wired in WA-212");
+  expect(agentsSource).toContain("function personaSectionHtml(scope, persona)");
+  expect(agentsSource).toContain("Start from template");
   expect(agentsSource).toContain("data-action=\"agent-config-cancel\"");
   expect(agentsSource).toContain("data-action=\"submit-agent-edit-page\"");
   expect(agentsSource).toContain("data-action=\"submit-add-agent-page\"");
@@ -1855,7 +1856,7 @@ test("Edit Agent flow targets /roles-by-id PATCH (EP-DEC-FIX B1)", () => {
   // endpoint, not the legacy /roles/:name route which returns 410.
   expect(agentsSource).toContain("agentEditingRole = { id: role.id,");
   expect(agentsSource).toContain("workspaceFetch('/roles-by-id/' + encodeURIComponent(agentEditingRole.id)");
-  expect(agentsSource).toContain("{ name, host: runtime === 'default' ? null : runtime }");
+  expect(agentsSource).toContain("{ name, host: runtime === 'default' ? null : runtime, persona: personaValuesFromInputs('edit') }");
   expect(agentsSource).not.toMatch(/workspaceFetch\('\/roles\/' \+ encodeURIComponent\(agentEditingRole\.originalName\)/);
   expect(agentsSource).not.toContain("defaultHost: runtime === 'default'");
 });
@@ -2843,6 +2844,28 @@ test("WA-167 (UI-NATIVE-REPLACE): native selects and alert calls are migrated", 
   expect(settingsSource).toContain("class=\"chat-history-confirm-input\"");
   expect(settingsSource).not.toContain("class=\"setting-select\" data-chat-history-clear-confirm");
   expect(shellOverridesSource).toContain(".chat-history-confirm-input");
+});
+
+test("EP-037 WA-217 persona editor wires templates, warnings, clear, and save", () => {
+  expect(agentsSource).toContain("const PERSONA_FIELDS = [");
+  expect(agentsSource).toContain("['description', 'Description', 'one line', 'input', 280, 1]");
+  expect(agentsSource).toContain("const PERSONA_SOFT_TOTAL = 24000");
+  expect(agentsSource).toContain("function personaSectionHtml(scope, persona)");
+  expect(agentsSource).toContain("settingsDropdown('persona-template-' + scope");
+  expect(agentsSource).toContain("data-persona-template-scope");
+  expect(agentsSource).toContain("function applyPersonaTemplate(scope, templateId)");
+  expect(agentsSource).toContain("if (String(el.value || '').trim()) { skipped++; continue; }");
+  expect(agentsSource).toContain("showToast('Filled ' + filled + ' field(s) from");
+  expect(agentsSource).toContain("function updatePersonaWarnings(scope)");
+  expect(agentsSource).toContain("data-persona-budget-banner");
+  expect(agentsSource).toContain("function clearPersona(scope)");
+  expect(agentsSource).toContain("confirmLabel: 'Clear persona'");
+  expect(agentsSource).toContain("persona: personaValuesFromInputs('add')");
+  expect(agentsSource).toContain("persona: personaValuesFromInputs('edit')");
+  expect(agentsSource).toContain("Array.isArray(respBody.warnings) && respBody.warnings.length");
+  expect(shellOverridesSource).toContain(".agent-persona-tools");
+  expect(shellOverridesSource).toContain(".agent-persona-field-warning");
+  expect(shellOverridesSource).toContain(".agent-persona-budget");
 });
 
 test("EP-037 WA-213 agent overview uses merged archive-style table", () => {

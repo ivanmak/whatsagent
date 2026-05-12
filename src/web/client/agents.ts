@@ -96,6 +96,18 @@ const NAME_DEFAULTS_FOR_NEW_AGENT = {
   'human-web': ['pm', 'operator'],
 };
 const NAME_DEFAULT_FALLBACK = ['engineer'];
+const PERSONA_FIELDS = [
+  ['description', 'Description', 'one line', 'input', 280, 1],
+  ['responsibilities', 'Responsibilities', 'what it owns', 'textarea', 4000, 4],
+  ['boundaries', 'Boundaries', 'what it should avoid / not touch', 'textarea', 4000, 4],
+  ['skills', 'Skills', 'capabilities other agents can delegate to it (freeform for now)', 'textarea', 2000, 4],
+  ['working_style', 'Working style', 'review-first, test-heavy, terse, …', 'textarea', 2000, 4],
+  ['extra_prompt', 'Extra prompt', 'freeform system-prompt extension — paste a full personality here if you like', 'textarea', 8000, 6],
+];
+const PERSONA_SOFT_TOTAL = 24000;
+let personaTemplates = [];
+let personaTemplatesLoading = false;
+let personaTemplatesError = '';
 let agentDeleteSaving = false;
 let agentPageMode = '';
 let agentPageRole = '';
@@ -989,7 +1001,7 @@ async function submitAddAgent() {
   setAddAgentStatus('Creating…', false);
   setAgentPageStatus('Creating…', false);
   try {
-    const res = await workspaceFetch('/roles-by-id', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repoId, name, host: runtime === 'default' ? null : runtime }) });
+    const res = await workspaceFetch('/roles-by-id', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repoId, name, host: runtime === 'default' ? null : runtime, persona: personaValuesFromInputs('add') }) });
     const respBody = await res.json().catch(() => ({}));
     if (!res.ok || respBody.ok === false) throw new Error(respBody.error || 'create failed');
     // RBAC Phase 3 slice 5b: persist role selection on the freshly-created
@@ -1012,6 +1024,7 @@ async function submitAddAgent() {
         return;
       }
     }
+    if (Array.isArray(respBody.warnings) && respBody.warnings.length) showToast(respBody.warnings.join('\n'), { type: 'warning' });
     $('addAgentModal')?.classList.add('hidden');
     await refreshDiscoveredRoles();
     if (agentPageMode === 'create') openAgentsOverviewPage();
@@ -1149,7 +1162,7 @@ async function submitAgentEdit() {
   setAgentPageStatus('Saving…', false);
   try {
     if (!agentEditingRole.id) throw new Error('role id missing');
-    const body = { name, host: runtime === 'default' ? null : runtime };
+    const body = { name, host: runtime === 'default' ? null : runtime, persona: personaValuesFromInputs('edit') };
     const res = await workspaceFetch('/roles-by-id/' + encodeURIComponent(agentEditingRole.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const respBody = await res.json().catch(() => ({}));
     if (!res.ok || respBody.ok === false) throw new Error(respBody.error || 'edit failed');
@@ -1167,6 +1180,7 @@ async function submitAgentEdit() {
         throw new Error('roles save failed: ' + (rolesBody.error || rolesRes.statusText));
       }
     }
+    if (Array.isArray(respBody.warnings) && respBody.warnings.length) showToast(respBody.warnings.join('\n'), { type: 'warning' });
     $('agentEditModal')?.classList.add('hidden');
     agentEditingRole = null;
     await refreshDiscoveredRoles();
@@ -1219,8 +1233,122 @@ function operatorCheckboxHtml(id, checked) {
     + '<div class="agent-operator-checkbox-help">Marks this agent as a human surrogate. Compose alongside another role for actual permissions.</div>';
 }
 
-function personaPlaceholderHtml() {
-  return '<section class="card settings-wide agent-config-section agent-config-persona-placeholder"><div class="section-head"><div><h2>Persona</h2><p>Persona fields land in the next EP-037 track after the config-page shell.</p></div></div><div class="thread-empty">Persona profile editor not wired in WA-212.</div></section>';
+function personaInputId(scope, field) {
+  return (scope === 'add' ? 'addAgentPersona_' : 'agentEditPersona_') + field;
+}
+
+function personaValuesFromSource(persona) {
+  const source = persona || {};
+  return Object.fromEntries(PERSONA_FIELDS.map(([field]) => [field, String(source[field] || '')]));
+}
+
+function personaValuesFromInputs(scope) {
+  return Object.fromEntries(PERSONA_FIELDS.map(([field]) => [field, String($(personaInputId(scope, field))?.value || '')]));
+}
+
+function personaTotalChars(values) {
+  return PERSONA_FIELDS.reduce((sum, [field]) => sum + String(values[field] || '').length, 0);
+}
+
+function personaTemplateOptions() {
+  return [['', '— none —'], ...personaTemplates.map(template => [template.id, template.label])];
+}
+
+function personaSectionHtml(scope, persona) {
+  const values = personaValuesFromSource(persona);
+  const total = personaTotalChars(values);
+  const tokens = Math.ceil(total / 4);
+  const templateControl = settingsDropdown('persona-template-' + scope, '', personaTemplateOptions(), { inputAttrs: 'data-persona-template-scope="' + esc(scope) + '"' });
+  const templateStatus = personaTemplatesLoading ? '<span class="agent-persona-note">Loading templates…</span>' : personaTemplatesError ? '<span class="agent-persona-note error">Templates unavailable: ' + esc(personaTemplatesError) + '</span>' : '<span class="agent-persona-note">fills empty fields only — won’t overwrite anything you typed</span>';
+  const fields = PERSONA_FIELDS.map(([field, label, hint, kind, softCap, rows]) => {
+    const value = String(values[field] || '');
+    const warning = value.length > softCap;
+    const labelHtml = '<label for="' + esc(personaInputId(scope, field)) + '">' + esc(label) + '<span class="hint">' + esc(hint) + '</span> <span class="agent-persona-field-warning ' + (warning ? '' : 'hidden') + '" data-persona-warning-for="' + esc(field) + '">⚠ long field</span></label>';
+    const attrs = 'id="' + esc(personaInputId(scope, field)) + '" class="setting-input agent-persona-input" data-persona-scope="' + esc(scope) + '" data-persona-field="' + esc(field) + '" data-persona-soft-cap="' + softCap + '"';
+    const control = kind === 'input'
+      ? '<input ' + attrs + ' type="text" value="' + esc(value) + '" placeholder="e.g. Frontend specialist — owns the web client" />'
+      : '<textarea ' + attrs + ' rows="' + rows + '">' + esc(value) + '</textarea>';
+    return '<div class="agent-persona-row">' + labelHtml + '<div>' + control + '</div></div>';
+  }).join('');
+  const budgetHidden = total > PERSONA_SOFT_TOTAL ? '' : ' hidden';
+  return '<section class="card settings-wide agent-config-section agent-config-persona"><div class="section-head"><div><h2>Persona</h2><p>What this agent is for — shown to peers in list_peers and the kanban assignee picker.</p></div><button type="button" class="btn secondary small" data-action="clear-agent-persona" data-persona-scope="' + esc(scope) + '">Clear persona</button></div>'
+    + '<div class="agent-persona-tools"><span>Start from template</span>' + templateControl + templateStatus + '</div>'
+    + '<div class="agent-persona-budget' + budgetHidden + '" data-persona-budget-banner="' + esc(scope) + '">⚠ persona ≈ <span data-persona-token-count="' + esc(scope) + '">' + tokens + '</span> tokens — added to every agent launch once persona injection is enabled</div>'
+    + fields
+  + '</section>';
+}
+
+async function ensurePersonaTemplatesLoaded() {
+  if (personaTemplates.length || personaTemplatesLoading) return;
+  personaTemplatesLoading = true;
+  personaTemplatesError = '';
+  try {
+    const res = await fetch(daemonApi('/persona-templates'));
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body.ok === false) throw new Error(body.error || 'failed to load templates');
+    personaTemplates = Array.isArray(body.templates) ? body.templates : [];
+  } catch (e) {
+    personaTemplatesError = String(e?.message || e);
+  } finally {
+    personaTemplatesLoading = false;
+    if (getPage() === 'agents' && (agentPageMode === 'create' || agentPageMode === 'config')) render();
+  }
+}
+
+function updatePersonaWarnings(scope) {
+  const root = document.querySelector('.agent-config-persona');
+  if (!root) return;
+  let total = 0;
+  root.querySelectorAll('[data-persona-scope="' + scope + '"][data-persona-field]').forEach(input => {
+    const field = input.dataset.personaField || '';
+    const cap = Number(input.dataset.personaSoftCap || 0);
+    const length = String(input.value || '').length;
+    total += length;
+    root.querySelector('[data-persona-warning-for="' + field + '"]')?.classList.toggle('hidden', !(cap && length > cap));
+  });
+  root.querySelector('[data-persona-budget-banner="' + scope + '"]')?.classList.toggle('hidden', total <= PERSONA_SOFT_TOTAL);
+  const tokens = root.querySelector('[data-persona-token-count="' + scope + '"]');
+  if (tokens) tokens.textContent = String(Math.ceil(total / 4));
+}
+
+function applyPersonaTemplate(scope, templateId) {
+  const template = personaTemplates.find(item => item.id === templateId);
+  if (!template) return;
+  let filled = 0;
+  let skipped = 0;
+  for (const [field] of PERSONA_FIELDS) {
+    const el = $(personaInputId(scope, field));
+    if (!el) continue;
+    if (String(el.value || '').trim()) { skipped++; continue; }
+    const next = String(template.fields?.[field] || '');
+    if (!next) continue;
+    el.value = next;
+    filled++;
+  }
+  updatePersonaWarnings(scope);
+  const dropdown = document.querySelector('[data-persona-template-scope="' + scope + '"]')?.closest('.settings-dropdown');
+  const input = dropdown?.querySelector('input[type="hidden"]');
+  const label = dropdown?.querySelector('.settings-dropdown-label');
+  if (input) input.value = '';
+  if (label) label.textContent = '— none —';
+  dropdown?.querySelectorAll('.settings-dropdown-menu button').forEach(button => button.classList.toggle('active', !button.dataset.value));
+  showToast('Filled ' + filled + ' field(s) from "' + template.label + '"' + (skipped ? ' — ' + skipped + ' field(s) already had content' : ''));
+}
+
+async function clearPersona(scope) {
+  const ok = await openConfirm({
+    title: 'Clear persona?',
+    body: 'This empties all six persona fields. Saving the agent will delete the stored persona row.',
+    confirmLabel: 'Clear persona',
+    danger: true,
+  });
+  if (!ok) return;
+  for (const [field] of PERSONA_FIELDS) {
+    const el = $(personaInputId(scope, field));
+    if (el) el.value = '';
+  }
+  updatePersonaWarnings(scope);
+  if (scope === 'edit') void submitAgentEdit();
 }
 
 function agentConfigHeader(role) {
@@ -1264,12 +1392,13 @@ export function renderAgentCreatePage() {
       + operatorCheckboxHtml('addAgentPageOperatorCheckbox', false)
       + '<div id="addAgentPageRolesPicker" class="agent-edit-roles" role="group" aria-label="Agent roles"></div>'
     + '</section>'
-    + personaPlaceholderHtml()
+    + personaSectionHtml('add', null)
     + settingsBottomActionBar('agent-create-page', agentPageStatus, { cancelAction: 'agent-config-cancel', saveAction: 'submit-add-agent-page', saving: addAgentSaving })
     + '<div class="workspace-add-status" id="agentCreatePageStatus">' + esc(agentPageStatus) + '</div>'
   + '</div>';
   renderAddAgentRoles();
   if (addAgentAvailableRoles === null && !addAgentRolesLoading) void loadAddAgentRoles();
+  void ensurePersonaTemplatesLoaded();
 }
 
 export function renderAgentConfigPage(roleAddress) {
@@ -1302,12 +1431,13 @@ export function renderAgentConfigPage(roleAddress) {
       + operatorCheckboxHtml('agentEditPageOperatorCheckbox', false)
       + '<div id="agentEditPageRolesPicker" class="agent-edit-roles" role="group" aria-label="Agent roles"></div>'
     + '</section>'
-    + personaPlaceholderHtml()
+    + personaSectionHtml('edit', role.persona)
     + settingsBottomActionBar('agent-config-page', agentPageStatus, { cancelAction: 'agent-config-cancel', saveAction: 'submit-agent-edit-page', saving: agentEditSaving, dangerAction: 'delete-agent-role', dangerLabel: 'Delete agent', dangerDisabled: Boolean(runnerFor(addr)) })
     + '<div class="workspace-add-status" id="agentConfigPageStatus">' + esc(agentPageStatus) + '</div>'
   + '</div>';
   renderAgentEditRoles();
   if (agentEditAvailableRoles === null && !agentEditRolesLoading) void loadAgentEditRoles(role.id);
+  void ensurePersonaTemplatesLoaded();
 }
 
 function openAgentsOverviewPage() {
@@ -1740,6 +1870,7 @@ export function installAgents(c) {
     if (target.dataset.action === 'submit-agent-edit') { e.preventDefault(); void submitAgentEdit(); }
     if (target.dataset.action === 'submit-agent-edit-page') { e.preventDefault(); void submitAgentEdit(); }
     if (target.dataset.action === 'agent-config-cancel') { e.preventDefault(); openAgentsOverviewPage(); }
+    if (target.dataset.action === 'clear-agent-persona') { e.preventDefault(); void clearPersona(target.dataset.personaScope || 'edit'); return; }
     if (target.dataset.action === 'toggle-agent-edit-role') { e.preventDefault(); toggleAgentEditRole(target.dataset.roleId || ''); }
     if (target.dataset.action === 'toggle-add-agent-role') { e.preventDefault(); toggleAddAgentRole(target.dataset.roleId || ''); }
     if (target.dataset.action === 'delete-agent-role') { e.preventDefault(); agentOverviewMenuRole = ''; void deleteAgentRoleAction(target.dataset.role || ''); }
@@ -1822,11 +1953,17 @@ export function installAgents(c) {
     const key = target?.dataset?.runtimeCommand || target?.dataset?.runtimeArgs;
     if (key) updateRuntimeCommandPreview(key);
     if (target?.dataset?.runtimeCommand) scheduleRuntimeCommandProbe(target.dataset.runtimeCommand, target.value);
+    if (target?.dataset?.personaField) updatePersonaWarnings(target.dataset.personaScope || 'edit');
     // RBAC Phase 3 slice 5b: re-seed default role selection as user types
     // the agent name. If user has manually toggled chips, typing a name
     // still resets — same as if they reopened the modal. Cheap; no async.
     if (target?.id === 'addAgentName' || target?.id === 'addAgentPageName') applyAddAgentNameDefault();
     if (target?.id === 'addAgentName' || target?.id === 'addAgentPageName') renderAddAgentRoles();
+  });
+
+  document.addEventListener('change', e => {
+    const target = e.target;
+    if (target?.dataset?.personaTemplateScope) applyPersonaTemplate(target.dataset.personaTemplateScope, target.value || '');
   });
 
   $('addAgentModal')?.addEventListener('click', e => { if (e.target === $('addAgentModal')) closeAddAgentModal(); });
