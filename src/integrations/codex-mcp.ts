@@ -440,7 +440,7 @@ function normalizeMessageId(value: unknown): number {
 }
 
 function formatToolText(result: unknown, action: string): string {
-  const body = result as { ok?: boolean; broadcastId?: string; task?: { display_id?: string; title?: string; status?: string; priority?: string; assigned_role_name?: string }; tasks?: Array<{ display_id?: string; title?: string; status?: string; priority?: string; assigned_role_name?: string }>; comment?: { task_display_id?: string; type?: string }; message?: { id?: number; to_role_name?: string; state?: string; channel_name?: string; parent_message_id?: number | null; root_message_id?: number | null }; messages?: Array<{ id?: number; to_role_name?: string; from_role_name?: string | null; sent_at?: string; body?: string; parent_message_id?: number | null; root_message_id?: number | null }>; envelope?: string; peers?: Array<{ displayId?: string; repo?: string | null; name: string; roles?: string[]; active?: boolean; isMain?: boolean; hostType?: string; status?: string; summary?: string }>; role?: { name?: string }; sessionId?: string; summary?: string };
+  const body = result as { ok?: boolean; broadcastId?: string; task?: { display_id?: string; title?: string; status?: string; priority?: string; assigned_role_name?: string }; tasks?: Array<{ display_id?: string; title?: string; status?: string; priority?: string; assigned_role_name?: string }>; comment?: { task_display_id?: string; type?: string }; message?: { id?: number; to_role_name?: string; state?: string; channel_name?: string; parent_message_id?: number | null; root_message_id?: number | null }; messages?: Array<{ id?: number; to_role_name?: string; from_role_name?: string | null; sent_at?: string; body?: string; parent_message_id?: number | null; root_message_id?: number | null }>; envelope?: string; peers?: Array<{ displayId?: string; repo?: string | null; name: string; roles?: string[]; active?: boolean; isMain?: boolean; hostType?: string; status?: string; summary?: string; persona?: Record<string, string> | null }>; role?: { name?: string }; sessionId?: string; summary?: string; persona?: Record<string, string> | null };
   const failure = formatWhatsAgentToolFailure(body, action);
   if (failure) return failure;
   if (action === "list_kanban_tasks" && Array.isArray(body.tasks)) return formatKanbanTasks(body.tasks);
@@ -453,11 +453,24 @@ function formatToolText(result: unknown, action: string): string {
   if (action === "read_channel_messages" && Array.isArray(body.messages)) return formatChannelHistory(body.messages);
   if (action === "check_messages") return body.envelope || "No WhatsAgent messages are queued.";
   if (action === "list_peers" && Array.isArray(body.peers)) {
-    return body.peers.map((peer) => `${peer.isMain ? "*" : " "} ${peer.displayId ?? peer.name}${peer.active ? " live" : " offline"}${peer.hostType ? ` ${peer.hostType}/${peer.status ?? "unknown"}` : ""}${peer.roles?.length ? ` [${peer.roles.join(", ")}]` : ""}${peer.summary ? ` - ${peer.summary}` : ""}`).join("\n");
+    return body.peers.map((peer) => `${peer.isMain ? "*" : " "} ${peer.displayId ?? peer.name}${peer.active ? " live" : " offline"}${peer.hostType ? ` ${peer.hostType}/${peer.status ?? "unknown"}` : ""}${peer.roles?.length ? ` [${peer.roles.join(", ")}]` : ""}${peer.persona?.description ? ` — ${peer.persona.description}` : ""}${peer.summary ? ` - ${peer.summary}` : ""}`).join("\n");
   }
-  if (action === "whoami" && body.role) return `role=${body.role.name ?? "unknown"}\nsession=${body.sessionId ?? "unknown"}`;
+  if (action === "whoami" && body.role) return formatWhoamiText(body);
   if (action === "set_summary" && body.ok !== false) return `Summary updated for ${body.role?.name ?? "role"}.`;
   return JSON.stringify(result, null, 2);
+}
+
+function formatWhoamiText(body: { role?: { name?: string }; sessionId?: string; persona?: Record<string, string> | null }): string {
+  const lines = [`role=${body.role?.name ?? "unknown"}`, `session=${body.sessionId ?? "unknown"}`];
+  const persona = body.persona;
+  if (persona && typeof persona === "object") {
+    const entries = Object.entries(persona).filter(([, v]) => typeof v === "string" && v.trim().length > 0);
+    if (entries.length) {
+      lines.push("persona:");
+      for (const [key, value] of entries) lines.push(`  ${key}: ${value}`);
+    }
+  }
+  return lines.join("\n");
 }
 
 function formatKanbanTasks(tasks: Array<{ display_id?: string; title?: string; status?: string; priority?: string; assigned_role_name?: string }>): string {
