@@ -578,6 +578,7 @@ export function migrate(db: Database): void {
   if (!migrationApplied(db, 22)) applyMigration22(db);
   if (!migrationApplied(db, 23)) applyMigration23(db);
   if (!migrationApplied(db, 24)) applyMigration24(db);
+  if (!migrationApplied(db, 25)) applyMigration25(db);
 }
 
 // Historical schema-repair pass for DBs upgraded from earlier versions where a
@@ -1641,6 +1642,14 @@ function applyMigration24(db: Database): void {
   }
 }
 
+/** v25 — EP-037 / WA-214: per-agent persona profile rows. */
+function applyMigration25(db: Database): void {
+  db.transaction(() => {
+    ensureAgentPersonasTable(db);
+    db.run("INSERT INTO schema_migrations (version, applied_at) VALUES (25, ?)", [nowIso()]);
+  })();
+}
+
 /** Spec §"Default Built-in Roles" → seeded as `is_builtin = 1`. */
 const BUILTIN_ROLE_DEFINITIONS: Array<{
   name: string;
@@ -1892,9 +1901,24 @@ function repairCurrentSchema(db: Database): void {
     ensureKanbanTables(db);
     ensureKanbanEpicSchema(db);
     ensureKanbanEpicNotificationSchema(db);
+    ensureAgentPersonasTable(db);
     ensureAgentSessionCredentialsTable(db);
     backfillDeliveredMessagesAsRead(db);
   })();
+}
+
+function ensureAgentPersonasTable(db: Database): void {
+  db.run(`CREATE TABLE IF NOT EXISTS agent_personas (
+    agent_id TEXT PRIMARY KEY REFERENCES agents(id) ON DELETE CASCADE,
+    description TEXT NOT NULL DEFAULT '',
+    responsibilities TEXT NOT NULL DEFAULT '',
+    boundaries TEXT NOT NULL DEFAULT '',
+    skills TEXT NOT NULL DEFAULT '',
+    working_style TEXT NOT NULL DEFAULT '',
+    extra_prompt TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`);
 }
 
 function ensureAgentSessionCredentialsTable(db: Database): void {
