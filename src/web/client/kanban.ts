@@ -904,19 +904,20 @@ function rolePersonaDescription(role) {
 function laneAgentHtml(role, laneName) {
   const repoName = laneRepoName(role);
   const roleName = role?.name || laneName;
+  // EP-037 follow-up: persona description no longer renders inline — it is a
+  // hover hint on the agent name (and on the avatar, in renderKanbanLane).
   const description = rolePersonaDescription(role);
-  const descriptionHtml = description ? '<span class="kanban-lane-agent-desc" ' + truncatedAttrs(description) + '>' + esc(description) + '</span>' : '';
-  const label = !repoName
-    ? '<strong class="kanban-lane-agent-name">' + esc(roleName) + '</strong>'
-    : '<span class="kanban-lane-agent-label"><span class="kanban-lane-agent-repo">' + esc(repoName) + '</span><strong class="kanban-lane-agent-name">' + esc(roleName) + '</strong></span>';
-  return label + descriptionHtml;
+  return !repoName
+    ? '<strong class="kanban-lane-agent-name"' + hintAttrs(description) + '>' + esc(roleName) + '</strong>'
+    : '<span class="kanban-lane-agent-label"><span class="kanban-lane-agent-repo">' + esc(repoName) + '</span><strong class="kanban-lane-agent-name"' + hintAttrs(description) + '>' + esc(roleName) + '</strong></span>';
 }
 
 function renderKanbanLane(lane) {
   const role = roleByName(lane.name);
   const done = lane.tasks.filter(task => task.status === 'Completed').length;
   const progress = lane.tasks.length ? Math.round((done / lane.tasks.length) * 100) : 0;
-  const avatar = role ? roleAvatarWithPresence(role, 26) : kanbanIssueIdenticon(lane.name, 26);
+  const personaDesc = role ? rolePersonaDescription(role) : '';
+  const avatar = '<span class="kanban-lane-agent-avatar"' + hintAttrs(personaDesc) + '>' + (role ? roleAvatarWithPresence(role, 26) : kanbanIssueIdenticon(lane.name, 26)) + '</span>';
   return '<div class="kanban-row" data-lane-name="' + esc(lane.name) + '"><div class="kanban-lane-head">' +
     '<div class="kanban-lane-agent">' + avatar + '<div class="kanban-lane-agent-text">' + laneAgentHtml(role, lane.name) + '<span class="kanban-lane-agent-count">' + lane.tasks.length + ' task' + (lane.tasks.length === 1 ? '' : 's') + '</span></div></div>' +
     '<div class="kanban-progress"><span style="width:' + progress + '%"></span></div>' +

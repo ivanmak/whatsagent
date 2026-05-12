@@ -734,7 +734,7 @@ export const WEB_SHELL_OVERRIDES = String.raw`
     .kanban-lane-agent .kanban-lane-agent-label { display: flex; flex-direction: column; min-width: 0; gap: 0; line-height: 1.15; }
     .kanban-lane-agent .kanban-lane-agent-repo { color: var(--muted); font-size: 10px; font-weight: 600; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .kanban-lane-agent .kanban-lane-agent-name { display: block; color: var(--text-strong); font-size: 12.5px; font-weight: 800; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .kanban-lane-agent .kanban-lane-agent-desc { display: block; max-width: 150px; color: var(--muted); font-size: 10px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .kanban-lane-agent .kanban-lane-agent-avatar { display: inline-flex; flex: 0 0 auto; }
     .kanban-lane-agent .kanban-lane-agent-count { display: block; margin-top: 1px; color: var(--muted); font-size: 10px; }
     .kanban-progress { height: 3px; max-width: 132px; overflow: hidden; border-radius: 999px; background: var(--border-soft); }
     .kanban-progress span { display: block; height: 100%; border-radius: inherit; background: var(--green); }

@@ -21,7 +21,7 @@ Per-agent Persona Profiles (EP-037, Epic A).
 
 - **Agents overview redesigned** as a repo-grouped table — avatar, name + runtime, RBAC role chips, persona description, current summary, and row actions — replacing the card grid; rows are clickable to open the config page. The name cell drops the runtime icon and online/offline pill (presence stays on the avatar dot); the roles column is narrower (two chips per row); description and current-summary cells wrap, clamp to three lines, and expand inline on click (with a hover tooltip showing the full text).
 - **Agent config / create pages** keep the agents tab bar on top, scroll inside the content area (the tab bar and save bar are fixed and full-width, with the save-bar content aligned to the form column), style their text inputs/textareas to match the rest of the app (sans-serif, themed), show the (fixed) repository as a compact readonly chip instead of a large empty-state box, align the "Start from template" picker to the persona fields, and use plainer copy for the "acts on behalf of a human" option.
-- **Kanban shows persona context** — the assignee's persona `description` appears on board lanes and on the task-detail "Assigned" field.
+- **Kanban shows persona context** — the assignee's persona `description` is a hover hint on the lane's agent name and avatar, and appears inline on the task-detail "Assigned" field.
 - Runtime-default labels reworded from "Daemon default" to "Global default".
 
 ### Notes
