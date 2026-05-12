@@ -1242,11 +1242,7 @@ const ABOUT_NETWORK_EDGES: ReadonlyArray<readonly [number, number]> = [
   [5, 8], [8, 9], [9, 10], [10, 11], [11, 12], [10, 13], [13, 14], [14, 15],
   [2, 17], [17, 18], [6, 18], [12, 19], [15, 20], [11, 19], [19, 20], [3, 16], [16, 17],
 ];
-// Pentagon vertices around (cx=32, cy=29, r=12); 5 nodes at -90° + i*72°.
-const ABOUT_ICON_NODES: ReadonlyArray<readonly [number, number]> = [
-  [32, 17], [43.413, 25.292], [39.053, 38.708],
-  [24.947, 38.708], [20.587, 25.292],
-];
+const ABOUT_ICON_ACCENTS = new Set(['indigo', 'violet', 'blue', 'teal', 'rose', 'amber']);
 
 function aboutNetworkSvg(): string {
   let edges = '';
@@ -1264,26 +1260,16 @@ function aboutNetworkSvg(): string {
   return '<svg class="about-network" viewBox="0 0 860 460" preserveAspectRatio="xMidYMid slice" aria-hidden="true">' + edges + dots + '</svg>';
 }
 
-function aboutAppIconSvg(): string {
-  const bubble = 'M16 9 H48 Q56 9 56 17 V38 Q56 46 48 46 H30 L17 57 L21 46 H16 Q8 46 8 38 V17 Q8 9 16 9 Z';
-  let spokes = '';
-  let pins = '';
-  for (const [x, y] of ABOUT_ICON_NODES) {
-    spokes += '<line x1="32" y1="29" x2="' + x + '" y2="' + y + '" stroke="white" stroke-width="1.5" stroke-opacity=".45"/>';
-    pins += '<circle cx="' + x + '" cy="' + y + '" r="2.8" fill="white" fill-opacity=".8"/>';
-  }
-  return '<svg class="about-app-icon" viewBox="0 0 64 64" width="160" height="160" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
-    '<defs><linearGradient id="aboutIconBg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">' +
-      '<stop offset="0%" class="about-icon-stop-a"/>' +
-      '<stop offset="100%" class="about-icon-stop-b"/>' +
-    '</linearGradient></defs>' +
-    '<rect width="64" height="64" rx="14.4" fill="url(#aboutIconBg)"/>' +
-    '<g>' +
-      '<path d="' + bubble + '" fill="white" fill-opacity=".16"/>' +
-      '<path d="' + bubble + '" stroke="white" stroke-width="1.8" stroke-opacity=".55" fill="none"/>' +
-      spokes + pins +
-      '<circle cx="32" cy="29" r="5.5" fill="white"/>' +
-    '</g></svg>';
+function aboutIconAccent(): string {
+  const accent = String(getPrefs().accentColor || 'indigo');
+  return ABOUT_ICON_ACCENTS.has(accent) ? accent : 'indigo';
+}
+
+function aboutAppIconImg(): string {
+  const accent = aboutIconAccent();
+  const src = '/assets/icons/whatsagent-' + accent + '-256.png';
+  const srcset = src + ' 1x, /assets/icons/whatsagent-' + accent + '-512.png 2x';
+  return '<img class="about-app-icon" src="' + src + '" srcset="' + srcset + '" width="160" height="160" alt="" aria-hidden="true" decoding="async" />';
 }
 
 function aboutPanel() {
@@ -1295,7 +1281,7 @@ function aboutPanel() {
       aboutNetworkSvg() +
       '<div class="about-hero-overlays" aria-hidden="true"></div>' +
       '<div class="about-hero-content">' +
-        '<div class="about-hero-icon-large">' + aboutAppIconSvg() + '</div>' +
+        '<div class="about-hero-icon-large">' + aboutAppIconImg() + '</div>' +
         '<div class="about-hero-text">' +
           '<div class="about-wordmark">WhatsAgent</div>' +
           '<div class="about-tagline">Messaging and task tracking for coding agents.<br/>Your agents collaborate, not just compute.</div>' +

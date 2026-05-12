@@ -2729,13 +2729,39 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
       if (root instanceof HTMLElement && root.matches('[data-truncate-tip]:not([data-truncate-tip-bound])')) bindTruncateTip(root);
       root.querySelectorAll?.('[data-truncate-tip]:not([data-truncate-tip-bound])').forEach(bindTruncateTip);
     }
+    function hintTipText(target) { return target.dataset.hint || ''; }
+    function attachHintTip(target) {
+      if (!(target instanceof HTMLElement)) return;
+      const text = hintTipText(target);
+      if (!text) return;
+      if (appTooltipShowTimer) clearTimeout(appTooltipShowTimer);
+      appTooltipShowTimer = setTimeout(() => showAppTooltip(target, text), 150);
+    }
+    function bindHintTip(target) {
+      if (!(target instanceof HTMLElement)) return;
+      if (target.dataset.hintTipBound) return;
+      target.dataset.hintTipBound = '1';
+      target.addEventListener('pointerenter', () => attachHintTip(target));
+      target.addEventListener('pointerleave', () => { clearAppTooltipTimers(); hideAppTooltip(); });
+      target.addEventListener('focus', () => attachHintTip(target));
+      target.addEventListener('blur', () => { clearAppTooltipTimers(); hideAppTooltip(); });
+    }
+    function bindHintTips(root = document) {
+      if (!root) return;
+      if (root instanceof HTMLElement && root.matches('[data-hint]:not([data-hint-tip-bound])')) bindHintTip(root);
+      root.querySelectorAll?.('[data-hint]:not([data-hint-tip-bound])').forEach(bindHintTip);
+    }
     function installTruncateTooltipController() {
       document.documentElement.dataset.truncateTipController = 'ready';
       bindTruncateTips();
+      bindHintTips();
       if (typeof MutationObserver === 'function') {
         const observer = new MutationObserver(records => {
           records.forEach(record => record.addedNodes.forEach(node => {
-            if (node instanceof HTMLElement) bindTruncateTips(node);
+            if (node instanceof HTMLElement) {
+              bindTruncateTips(node);
+              bindHintTips(node);
+            }
           }));
         });
         observer.observe(document.body, { childList: true, subtree: true });

@@ -2131,9 +2131,15 @@ test("EP-015 WA-059: Settings About uses identity card", () => {
   expect(settingsSource).toContain("v' + esc(version) + '-beta");
   expect(settingsSource).toContain("' + esc(build) + '");
   expect(settingsSource).toContain("Ivan Mak");
+  expect(settingsSource).toContain("function aboutAppIconImg(): string");
+  expect(settingsSource).toContain("/assets/icons/whatsagent-' + accent + '-256.png");
+  expect(settingsSource).toContain("/assets/icons/whatsagent-' + accent + '-512.png 2x");
+  expect(settingsSource).toContain("class=\"about-app-icon\" src=");
   expect(settingsSource).toContain("https://github.com/ivanmak/whatsagent");
   expect(settingsSource).toContain("MIT License");
   expect(settingsSource).not.toContain("Version policy");
+  expect(settingsSource).not.toContain("function aboutAppIconSvg");
+  expect(settingsSource).not.toContain("ABOUT_ICON_NODES");
   expect(settingsSource).not.toContain("/assets/icons/whatsagent-indigo-128.png");
   expect(shellOverridesSource).toContain(".about-hero { position: relative;");
   expect(shellOverridesSource).toContain(".about-network { position: absolute;");
@@ -2776,6 +2782,20 @@ test("WA-166 (UI-TRUNCATION): shared truncate tooltip hook covers clipped labels
   expect(shellOverridesSource).toContain(".kanban-epic-drawer-head h2 { margin: 0; font-size: 18px; font-weight: 700; }");
   expect(shellOverridesSource).toContain(".workspace-settings-path, .workspace-settings-meta { min-width: 0; white-space: normal; word-break: break-all;");
   expect(shellOverridesSource).toContain(".workspace-current-path { display: block; min-width: 0; overflow-wrap: anywhere; white-space: normal;");
+});
+
+test("EP-036 WA-209/WA-210: app tooltip wraps and kanban meta pills expose hints", () => {
+  expect(shellOverridesSource).toContain("max-width: min(360px, calc(100vw - 16px));");
+  expect(shellOverridesSource).toContain("white-space: normal; overflow-wrap: anywhere;");
+  expect(clientSource).toContain("function bindHintTips(root = document)");
+  expect(clientSource).toContain("[data-hint]:not([data-hint-tip-bound])");
+  expect(clientSource).toContain("target.dataset.hintTipBound = '1';");
+  expect(clientSource).toContain("target.addEventListener('focus', () => attachHintTip(target));");
+  expect(kanbanSource).toContain("function renderPriorityPill(value, fallback = 'P?', extraClass = '')");
+  expect(kanbanSource).toContain("'Priority: ' + priority");
+  expect(kanbanSource).toContain("'Effort estimate: ' + effort");
+  expect(kanbanSource).toContain("'GitHub issue #' + value");
+  expect(kanbanSource).toContain("renderPriorityPill(task.priority) + renderEffortPill(task.effort, 'M') + github");
 });
 
 test("WA-167 (UI-NATIVE-REPLACE): native selects and alert calls are migrated", async () => {

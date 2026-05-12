@@ -40,9 +40,22 @@ function effortPillClass(value) {
   return KANBAN_EFFORT_SET.has(effort) ? (' effort-' + effort.toLowerCase()) : '';
 }
 
+function hintAttrs(text) {
+  return text ? ' data-hint="' + esc(text) + '"' : '';
+}
+
+function renderPriorityPill(value, fallback = 'P?', extraClass = '') {
+  const priority = value || fallback;
+  return '<span class="kanban-pill' + extraClass + '"' + hintAttrs(priority ? ('Priority: ' + priority) : '') + '>' + esc(priority || '') + '</span>';
+}
+
 function renderEffortPill(value, fallback = '') {
   const effort = value || fallback;
-  return '<span class="kanban-pill effort' + effortPillClass(effort) + '">' + esc(effort || '') + '</span>';
+  return '<span class="kanban-pill effort' + effortPillClass(effort) + '"' + hintAttrs(effort ? ('Effort estimate: ' + effort) : '') + '>' + esc(effort || '') + '</span>';
+}
+
+function renderGithubNumberPill(value) {
+  return value ? '<span class="kanban-pill github"' + hintAttrs('GitHub issue #' + value) + '>#' + esc(value) + '</span>' : '';
 }
 
 // EP-003 WA-011: deterministic identicon seed for a role-name reference
@@ -717,7 +730,7 @@ function taskRepoRoleLabel(task) {
 function renderKanbanCardCore(task, opts = {}) {
   const extraClass = opts.extraClass || '';
   const archived = task.archived_at ? '<span class="kanban-pill archived">archived</span>' : '';
-  const github = task.github_number ? '<span class="kanban-pill github">#' + esc(task.github_number) + '</span>' : '';
+  const github = renderGithubNumberPill(task.github_number);
   const title = String(task.title || '');
   const statusPill = opts.includeStatusPill
     ? '<span class="kanban-pill kanban-status-' + statusClass(task.status) + '">' + esc(task.status) + '</span>'
@@ -729,7 +742,7 @@ function renderKanbanCardCore(task, opts = {}) {
   return '<button type="button" class="' + cardClass + '" data-action="open-kanban-task" data-task-id="' + esc(task.display_id) + '">' +
     repoLine +
     '<span class="kanban-card-title" ' + truncatedAttrs(title) + '>' + esc(title) + '</span>' +
-    '<span class="kanban-card-meta"><span class="kanban-pill">' + esc(task.priority || 'P?') + '</span>' + renderEffortPill(task.effort, 'M') + github + statusPill + archived + '<span class="kanban-id">' + esc(task.display_id) + '</span></span>' +
+    '<span class="kanban-card-meta">' + renderPriorityPill(task.priority) + renderEffortPill(task.effort, 'M') + github + statusPill + archived + '<span class="kanban-id">' + esc(task.display_id) + '</span></span>' +
   '</button>';
 }
 
@@ -928,7 +941,7 @@ function renderKanbanArchiveItem(task) {
     '<span class="archive-title"><strong ' + truncatedAttrs(task.title || '') + '>' + esc(task.title || '') + '</strong><span ' + truncatedAttrs(github || task.details || 'Archived task') + '>' + esc(github || task.details || 'Archived task') + '</span></span>' +
     '<span><span class="kanban-pill status">' + esc(task.status || '') + '</span></span>' +
     '<span>' + renderEffortPill(task.effort) + '</span>' +
-    '<span><span class="kanban-pill ' + esc(String(task.priority || '').toLowerCase()) + '">' + esc(task.priority || '') + '</span></span>' +
+    '<span>' + renderPriorityPill(task.priority, '', ' ' + esc(String(task.priority || '').toLowerCase())) + '</span>' +
     '<span class="archive-date">' + esc(formatMessageTime(task.archived_at || task.updated_at || task.created_at)) + '</span>' +
     '<span class="archive-muted">' + esc(task.archived_by_role_name || '') + '</span>' +
     '<span class="archive-detail-link">Open</span>' +
@@ -964,7 +977,7 @@ function renderKanbanDetail() {
   if (!task) return shell('', '<div class="thread-empty">Task not found.</div>');
   const head = '<div><p class="kanban-kicker">' + esc(task.display_id) + '</p><h2>' + esc(task.title || '') + '</h2></div>';
   const body =
-    '<div class="kanban-detail-badges"><span class="kanban-pill status">' + esc(task.status || '') + '</span><span class="kanban-pill">' + esc(task.priority || '') + '</span>' + renderEffortPill(task.effort) + '</div>' +
+    '<div class="kanban-detail-badges"><span class="kanban-pill status">' + esc(task.status || '') + '</span>' + renderPriorityPill(task.priority, '') + renderEffortPill(task.effort) + '</div>' +
     '<div class="kanban-detail-grid"><div><span>Assigned</span><strong ' + truncatedAttrs(task.assigned_role_name || '') + '>' + esc(task.assigned_role_name || '') + '</strong></div><div><span>Created by</span><strong ' + truncatedAttrs(task.created_by_role_name || '') + '>' + esc(task.created_by_role_name || '') + '</strong></div><div><span>Updated</span><strong ' + truncatedAttrs(formatMessageTime(task.updated_at || task.created_at)) + '>' + esc(formatMessageTime(task.updated_at || task.created_at)) + '</strong></div></div>' +
     (task.github_url ? (/^https?:\/\//i.test(task.github_url)
       ? '<a class="kanban-github" href="' + esc(task.github_url) + '" target="_blank" rel="noopener noreferrer">' + esc(task.github_title || ('GitHub #' + (task.github_number || ''))) + '</a>'
@@ -1071,7 +1084,7 @@ function renderKanbanEpicDrawer() {
     : '';
   const meta = '<div class="kanban-epic-drawer-meta">' +
     '<div class="kanban-epic-drawer-meta-row">' + kanbanIssueIdenticon(epic.assigned_role_name || '', 24) + '<strong>' + esc(epic.assigned_role_name || 'unassigned') + '</strong></div>' +
-    '<div class="kanban-epic-drawer-pills"><span class="kanban-pill">' + esc(epic.priority || 'P?') + '</span>' + renderEffortPill(epic.effort, 'M') + (githubLink ? githubLink : '') + '</div>' +
+    '<div class="kanban-epic-drawer-pills">' + renderPriorityPill(epic.priority) + renderEffortPill(epic.effort, 'M') + (githubLink ? githubLink : '') + '</div>' +
   '</div>';
   const details = '<section class="kanban-epic-drawer-section"><h3>Details</h3><div class="kanban-detail-text markdown-body">' + renderSafeMarkdown(epic.details || 'No epic details yet.') + '</div></section>';
   const closeBanner = renderKanbanEpicCloseApprovalBanner(epic);
