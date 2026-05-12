@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-05-12
+
+Web UI polish (EP-036).
+
+### Fixed
+
+- Hover tooltip popup no longer clips its own text — `.app-tooltip` now wraps with a viewport-safe max width instead of `nowrap` at 280px, so the full text of a truncated label is actually shown.
+- About page banner now uses the branded PNG app icons from `assets/icons` (accent-aware, `256`/`512` srcset) instead of a hand-rolled inline SVG, matching the favicon and nav logo.
+
+### Added
+
+- Kanban card meta pills expose hover hints via a new always-on `data-hint` tooltip: `GitHub issue #N` on the issue-number pill, `Priority: PN`, and `Effort estimate: <XS…XL>` — also on the archive, task-detail, and epic-drawer pill variants.
+
 ## [0.1.0] - 2026-05-08
 
 Initial public release.

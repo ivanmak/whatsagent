@@ -1,6 +1,6 @@
 {
   "name": "whatsagent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Local fleet controller and WhatsApp-style messaging for AI coding agents",
