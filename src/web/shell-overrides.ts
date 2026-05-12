@@ -1127,6 +1127,36 @@ export const WEB_SHELL_OVERRIDES = String.raw`
     .agent-card-actions .launch-split .icon-btn { border-radius: 8px 0 0 8px; }
     .agent-card-actions .launch-split .launch-arrow { border-radius: 0 8px 8px 0; }
     .agent-card-actions .workspace-card-icon-btn { width: var(--control-h); height: var(--control-h); }
+    .agents-archive-board { flex: 1 1 auto; min-height: 0; border-top: 1px solid var(--border); background: var(--surface); }
+    .agents-archive-table { min-width: 980px; }
+    .agents-archive-head, .agents-agent-row { grid-template-columns: 72px minmax(190px, 1fr) minmax(150px, .8fr) minmax(180px, 1fr) minmax(220px, 1.1fr) 132px; }
+    .agents-archive-head { position: sticky; top: 0; z-index: 12; background: color-mix(in srgb, var(--surface) 96%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); }
+    .agents-archive-head span { padding: 0 10px; border-right: 1px solid var(--border-soft); }
+    .agents-repo-group { display: contents; }
+    .agents-repo-row { display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 8px 14px; background: var(--surface-soft); border-bottom: 1px solid var(--border); }
+    .agents-repo-row .repo-group-id { flex: 1 1 auto; }
+    .agents-repo-group.collapsed .repo-group-collapse { transform: none; }
+    .repo-group-count { color: var(--muted); font-size: 11px; font-weight: 850; white-space: nowrap; }
+    .agents-empty-line { border-bottom: 1px solid var(--border-soft); }
+    .agents-agent-row.agent-card { position: relative; display: grid; width: 100%; min-height: 66px; padding: 0; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--border-soft) 84%, transparent); border-radius: 0; box-shadow: none; cursor: pointer; }
+    .agents-agent-row.agent-card:hover, .agents-agent-row.agent-card:focus-visible { background: color-mix(in srgb, var(--accent) 8%, var(--surface)); outline: 0; }
+    .agents-agent-row.agent-card.missing { opacity: .78; background: color-mix(in srgb, var(--red) 5%, var(--surface)); }
+    .agents-agent-row > * { min-width: 0; padding: 8px 10px; }
+    .agents-agent-avatar-cell { display: flex; justify-content: center; }
+    .agent-table-avatar { display: inline-flex; flex-direction: column; align-items: center; gap: 3px; }
+    .agent-table-avatar .agent-avatar-presence { flex: 0 0 auto; }
+    .agent-main-under-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 15px; padding: 0 6px; border: 1px solid var(--accent); border-radius: 999px; background: var(--accent-light); color: var(--accent-dark); font-size: 9px; font-weight: 900; line-height: 1; text-transform: uppercase; }
+    .agents-agent-name { gap: 4px; }
+    .agents-agent-name strong { max-width: 100%; }
+    .agent-table-runtime { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }
+    .agents-agent-name .badge { width: max-content; }
+    .agents-agent-roles { align-content: center; }
+    .agents-agent-description, .agents-agent-summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .agents-agent-summary.empty { color: color-mix(in srgb, var(--muted) 72%, transparent); font-style: italic; }
+    .agents-agent-actions { justify-content: flex-end; position: relative; }
+    .agents-agent-actions + .agent-card-menu { right: 8px; top: 48px; z-index: 95; }
+    .agents-agent-row .agent-stale-runner-banner { margin-top: 2px; padding: 2px 6px; font-size: 10px; }
+    @media (max-width: 760px) { .agents-archive-table { min-width: 780px; } .agents-archive-head, .agents-agent-row { grid-template-columns: 58px minmax(170px, 1fr) minmax(130px, .8fr) minmax(160px, 1fr) minmax(170px, 1fr) 118px; } .agents-repo-row { padding: 8px 10px; } }
 
     .agents-empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-height: 320px; padding: 40px; color: var(--muted); }
     .agents-empty-title { color: var(--text); font-size: 15px; font-weight: 700; }

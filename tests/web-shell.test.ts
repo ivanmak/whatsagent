@@ -1788,8 +1788,8 @@ test("renderWebShell includes multi-repo agent overview grouping hooks", () => {
   expect(agentsSource).not.toContain("function repoNameForRole(role)");
   expect(agentsSource).not.toContain("role.path.split('/')[0]");
   expect(agentsSource).toContain("function repoGroupedAgentRows()");
-  expect(agentsSource).toContain("repo-group");
-  expect(agentsSource).toContain("repo-group-head");
+  expect(agentsSource).toContain("agents-archive-board");
+  expect(agentsSource).toContain("agents-repo-row repo-group-head");
   expect(agentsSource).toContain("data-action=\"open-add-agent\"");
   // Star-mode-no-main warning banner (rendered when policy=star + no mainRole + at least one agent).
   expect(agentsSource).toContain("function starModeMissingMainBanner()");
@@ -1798,10 +1798,10 @@ test("renderWebShell includes multi-repo agent overview grouping hooks", () => {
   expect(html).toContain(".agent-overview-warning");
   expect(agentsSource).toContain("data-repo-id=\"");
   expect(agentsSource).toContain("no agents yet");
-  expect(agentsSource).toContain("repo-group-list");
-  expect(html).toContain(".repo-group");
-  expect(html).toContain(".repo-group-head");
-  expect(html).toContain(".repo-group-list");
+  expect(agentsSource).toContain("archive-table-head agents-archive-head");
+  expect(html).toContain(".agents-archive-board");
+  expect(html).toContain(".agents-repo-row");
+  expect(html).toContain(".agents-agent-row.agent-card");
 });
 
 test("renderWebShell includes Add Agent repo dropdown hooks", () => {
@@ -1902,7 +1902,7 @@ test("renderWebShell includes role display id hooks for cards and messages", () 
   expect(script).toContain("const addr = roleDisplayId(role);");
   expect(script).toContain("esc(addr)");
   expect(agentsSource).toContain("function roleDisplayId(role) { return ctx().roleDisplayId(role); }");
-  expect(agentsSource).toContain("esc(addr) + agentCardBadges");
+  expect(agentsSource).toContain("agentCardBadges(online, missing, false)");
   expect(agentsSource).toContain("role.repo_name || role.repoName || ''");
   expect(agentsSource).toContain("const addr = roleDisplayId(role);");
 });
@@ -2802,7 +2802,8 @@ test("WA-166 (UI-TRUNCATION): shared truncate tooltip hook covers clipped labels
   expect(kanbanSource).toContain('class="archive-title"><strong \' + truncatedAttrs(task.title || \'\')');
   expect(settingsSource).toContain('class="auth-session-agent" \' + truncatedAttrs(authSessionLabel(s))');
   expect(settingsSource).toContain('class="peer-rule-row"><span \' + truncatedAttrs(rule.role_a_name)');
-  expect(agentsSource).toContain('class="agent-card-meta"');
+  expect(agentsSource).toContain('class="archive-title agents-agent-name"');
+  expect(agentsSource).toContain('class="agents-agent-description archive-muted"');
 
   expect(kanbanSource).not.toMatch(/class="kanban-card-title" title=/);
   expect(shellOverridesSource).toContain(".kanban-epic-drawer-head h2 { margin: 0; font-size: 18px; font-weight: 700; }");
@@ -2844,20 +2845,24 @@ test("WA-167 (UI-NATIVE-REPLACE): native selects and alert calls are migrated", 
   expect(shellOverridesSource).toContain(".chat-history-confirm-input");
 });
 
-test("WA-205 agent card redesign shows display id, roles, and summary in agents.ts agentCard", () => {
+test("EP-037 WA-213 agent overview uses merged archive-style table", () => {
   expect(agentsSource).toContain("const assignedRoles = Array.isArray(role.roles) ? role.roles.map(item => typeof item === 'string' ? item : item?.name).filter(Boolean) : []");
   expect(agentsSource).toContain("const roleChips = assignedRoles.length ? assignedRoles.map(name => badge(name, '', false)).join('') : '<span class=\"agent-card-roles-empty\">&mdash;</span>'");
-  expect(agentsSource).toContain("const currentSummary = String(role.summary || '').trim() || '&mdash;'");
-  expect(agentsSource).toContain("agent-card-meta");
-  expect(agentsSource).toContain("agent-card-rbac-chips");
-  expect(agentsSource).toContain("agent-card-summary");
+  expect(agentsSource).toContain("const description = String(role.persona?.description || '').trim()");
+  expect(agentsSource).toContain("const currentSummary = String(role.summary || '').trim()");
+  expect(agentsSource).toContain("archive-table-head agents-archive-head");
+  expect(agentsSource).toContain("agents-agent-description archive-muted");
+  expect(agentsSource).toContain("agent-card-rbac-chips agents-agent-roles");
+  expect(agentsSource).toContain("offline — no summary");
+  expect(agentsSource).toContain("Re-launch with…");
   expect(agentsSource).not.toContain("workspace-card-path mono");
   expect(clientSource).not.toContain("function roleCard(role)");
   expect(daemonSource).toContain("roles: agentOverviewRoles(db, listAgents(db))");
   expect(daemonSource).toContain("roles: getAgentRoles(db, agent.id).map((role) => role.name)");
   expect(daemonSource).toContain("summary: sessionByRoleId.get(agent.id)?.summary ?? \"\"");
-  expect(shellOverridesSource).toContain(".agent-card-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; color: var(--muted); font-size: 11px; line-height: 1.35; margin-top: 4px; }");
-  expect(shellOverridesSource).toContain(".agent-card-summary { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.35; white-space: normal; overflow-wrap: anywhere; }");
+  expect(shellOverridesSource).toContain(".agents-archive-board");
+  expect(shellOverridesSource).toContain(".agents-archive-head, .agents-agent-row");
+  expect(shellOverridesSource).toContain(".agents-agent-description, .agents-agent-summary");
 });
 
 test("EP-035 WA-193: special keys overlay mounts only for live terminal panels", () => {

@@ -41,6 +41,7 @@ function roleDisplayId(role) { return ctx().roleDisplayId(role); }
 function hostLabel(host) { return ctx().hostLabel(host); }
 function peerIcon(host, size) { return ctx().peerIcon(host, size); }
 function roleAvatarGrid(role, size) { return ctx().roleAvatarGrid(role, size); }
+function roleAvatarWithPresence(role, size) { return ctx().roleAvatarWithPresence(role, size); }
 function badge(text, kind, live) { return ctx().badge(text, kind, live); }
 function kv(label, value, secondary) { return ctx().kv(label, value, secondary); }
 function settingRow(title, sub, control) { return ctx().settingRow(title, sub, control); }
@@ -291,7 +292,12 @@ function repoGroupedAgentRows() {
   const state = getState();
   const repos = state.repos || [];
   if (!repos.length) return emptyReposState();
-  return '<div class="repo-group-list">' + repos.map(repoGroupSection).join('') + '</div>';
+  return '<div class="archive-board agents-archive-board">'
+    + '<div class="archive-table agents-archive-table">'
+      + '<div class="archive-table-head agents-archive-head"><span></span><span>Agent</span><span>Roles</span><span>Description</span><span>Current summary</span><span>Actions</span></div>'
+      + repos.map(repoGroupSection).join('')
+    + '</div>'
+  + '</div>';
 }
 
 function emptyReposState() {
@@ -303,7 +309,7 @@ function emptyReposState() {
 
 function repoGroupSection(repo) {
   const roles = rolesForRepo(repo);
-  const roleRows = roles.length ? roles.map(agentCard).join('') : '<div class="repo-empty-pill">no agents yet</div>';
+  const roleRows = collapsedRepoIds.has(repo.id) ? '' : (roles.length ? roles.map(agentCard).join('') : '<div class="archive-empty-line agents-empty-line">no agents yet</div>');
   const menuOpen = repoMenuOpenId === repo.id;
   const collapsed = collapsedRepoIds.has(repo.id);
   const overflow = '<div class="repo-group-overflow">'
@@ -313,17 +319,18 @@ function repoGroupSection(repo) {
         + '<button type="button" class="danger" data-action="delete-repo" data-repo-id="' + esc(repo.id) + '">Delete Repository</button>'
       + '</div>' : '')
   + '</div>';
-  const chevron = '<button type="button" class="repo-group-collapse" data-action="toggle-repo-collapse" data-repo-id="' + esc(repo.id) + '" aria-expanded="' + (collapsed ? 'false' : 'true') + '" aria-label="' + (collapsed ? 'Expand' : 'Collapse') + ' agent list">▼</button>';
-  return '<section class="repo-group ' + (collapsed ? 'collapsed' : '') + '" data-repo-id="' + esc(repo.id) + '">'
-    + '<div class="repo-group-head">'
-      + '<div class="repo-group-id">' + chevron + '<div class="repo-group-id-text"><span>' + esc(repo.name) + '</span>' + (repo.absolutePath ? '<small class="repo-group-id-sep">·</small><small class="mono">' + esc(repo.absolutePath) + '</small>' : '') + '</div></div>'
+  const chevron = '<button type="button" class="repo-group-collapse" data-action="toggle-repo-collapse" data-repo-id="' + esc(repo.id) + '" aria-expanded="' + (collapsed ? 'false' : 'true') + '" aria-label="' + (collapsed ? 'Expand' : 'Collapse') + ' agent list">' + (collapsed ? '▶' : '▼') + '</button>';
+  return '<div class="repo-group agents-repo-group ' + (collapsed ? 'collapsed' : '') + '" data-repo-id="' + esc(repo.id) + '">'
+    + '<div class="archive-row agents-repo-row repo-group-head">'
+      + '<div class="repo-group-id">' + chevron + '<div class="repo-group-id-text"><span>' + esc(repo.name) + '</span>' + (repo.absolutePath ? '<small class="repo-group-id-sep">·</small><small class="mono" ' + truncatedAttrs(repo.absolutePath) + '>' + esc(repo.absolutePath) + '</small>' : '') + '</div></div>'
+      + '<div class="repo-group-count">' + roles.length + ' agent' + (roles.length === 1 ? '' : 's') + '</div>'
       + '<div class="repo-group-actions">'
         + '<button class="btn secondary small" data-action="open-add-agent" data-repo-id="' + esc(repo.id) + '">+ Add Agent</button>'
         + overflow
       + '</div>'
     + '</div>'
-    + '<div class="agent-row-list">' + roleRows + '</div>'
-  + '</section>';
+    + roleRows
+  + '</div>';
 }
 
 function rolesForRepo(repo) {
@@ -346,21 +353,20 @@ function agentCard(role) {
   const overflow = '<button type="button" class="workspace-card-icon-btn agent-card-overflow" data-action="toggle-agent-card-menu" data-role="' + esc(addr) + '" aria-haspopup="menu" aria-expanded="' + (menuOpen ? 'true' : 'false') + '" aria-label="Agent actions">' + esc('\u22EF') + '</button>';
   const assignedRoles = Array.isArray(role.roles) ? role.roles.map(item => typeof item === 'string' ? item : item?.name).filter(Boolean) : [];
   const roleChips = assignedRoles.length ? assignedRoles.map(name => badge(name, '', false)).join('') : '<span class="agent-card-roles-empty">&mdash;</span>';
-  const currentSummary = String(role.summary || '').trim() || '&mdash;';
-  return '<article class="workspace-card agent-card ' + (missing ? 'missing' : '') + '" data-role="' + esc(addr) + '">' +
-    '<div class="workspace-card-head">' +
-      '<div class="agent-card-id">' + avatarForRole(role) +
-        '<div>' +
-          '<h2 class="workspace-card-title" ' + truncatedAttrs(addr) + '>' + esc(addr) + agentCardBadges(online, missing, isMain) + '</h2>' +
-          '<div class="agent-card-meta">' + esc(roleRuntimeLabel(role)) + ' | Roles: <span class="agent-card-rbac-chips">' + roleChips + '</span></div>' +
-          '<div class="agent-card-summary">Current summary: ' + currentSummary + '</div>' +
-        '</div>' +
-      '</div>' +
-      '<div class="workspace-card-actions agent-card-actions">' + rowRuntimeActions(role, runner, missing) + overflow + '</div>' +
-    '</div>' +
-    staleRunnerBanner(runner) +
-    overflowMenu +
-  '</article>';
+  const description = String(role.persona?.description || '').trim();
+  const currentSummary = String(role.summary || '').trim();
+  const runtimeHost = roleRuntime(role);
+  const runtime = '<span class="agent-table-runtime mono">' + (runtimeHost ? peerIcon(runtimeHost, 14) : '') + esc(roleRuntimeLabel(role)) + '</span>';
+  const avatar = '<div class="agent-table-avatar">' + roleAvatarWithPresence(role, 34) + (isMain ? '<span class="agent-main-under-badge">main</span>' : '') + '</div>';
+  return '<div class="archive-item agent-card agents-agent-row ' + (missing ? 'missing' : '') + '" data-action="open-agent-edit" data-role="' + esc(addr) + '" role="button" tabindex="0">'
+    + '<div class="agents-agent-avatar-cell">' + avatar + '</div>'
+    + '<div class="archive-title agents-agent-name"><strong ' + truncatedAttrs(addr) + '>' + esc(addr) + '</strong>' + runtime + agentCardBadges(online, missing, false) + staleRunnerBanner(runner) + '</div>'
+    + '<div class="agent-card-rbac-chips agents-agent-roles">' + roleChips + '</div>'
+    + '<div class="agents-agent-description archive-muted" ' + truncatedAttrs(description) + '>' + (description ? esc(description) : '&mdash;') + '</div>'
+    + '<div class="agent-card-summary agents-agent-summary archive-muted ' + (currentSummary ? '' : 'empty') + '" ' + truncatedAttrs(currentSummary) + '>' + (currentSummary ? esc(currentSummary) : 'offline — no summary') + '</div>'
+    + '<div class="workspace-card-actions agent-card-actions agents-agent-actions">' + rowRuntimeActions(role, runner, missing) + overflow + '</div>'
+    + overflowMenu
+  + '</div>';
 }
 
 function agentCardBadges(online, missing, isMain) {
@@ -376,6 +382,7 @@ function agentCardMenu(role, runner, isMain) {
   const addr = roleDisplayId(role);
   const items = [];
   items.push('<button type="button" data-action="open-agent-edit" data-role="' + esc(addr) + '">Edit</button>');
+  if (runner?.reachable) items.push('<button type="button" data-action="toggle-launch-menu" data-role="' + esc(addr) + '">Re-launch with…</button>');
   if (isMain) {
     items.push('<button type="button" data-action="unset-main" data-role="' + esc(addr) + '">Remove main</button>');
   } else {
