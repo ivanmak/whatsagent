@@ -1848,16 +1848,19 @@ test("EP-037 WA-212: agent config pages use separate sub-view routes", () => {
   expect(agentsSource).toContain("data-action=\"submit-add-agent-page\"");
   expect(agentsSource).toContain("Delete agent</button>");
   expect(agentsSource).toContain("agentPageMode === 'config'");
-  expect(shellOverridesSource).toContain(".agent-config-page { max-width: 980px;");
+  expect(shellOverridesSource).toContain(".agent-config-inner { max-width: 980px;");
+  expect(shellOverridesSource).toContain(".agent-config-page { display: flex; flex-direction: column;");
   // EP-037 follow-up: the config/create pages keep the agent tab bar visible,
   // the body scrolls inside #content, and the repo value on the edit page is a
   // compact readonly chip (not the big .thread-empty empty-state box).
   expect(clientSource).toContain("agentTabsHtml: () => agentTabs()");
   expect(agentsSource).toContain("function agentTabsHtml() { return ctx().agentTabsHtml(); }");
   expect(agentsSource).toContain('<div class="agent-config-tabbar">\' + agentTabsHtml() + \'</div>');
+  expect(agentsSource).toContain('<div class="agent-config-scroll"><div class="agent-config-inner">');
   expect(agentsSource).toContain('<div class="agent-config-readonly">');
-  expect(shellOverridesSource).toContain(".content:has(.agent-config-page) { padding: 0; overflow-y: auto; }");
-  expect(shellOverridesSource).toContain(".agent-config-tabbar { position: sticky; top: 0;");
+  expect(shellOverridesSource).toContain(".content:has(.agent-config-page) { padding: 0; overflow: hidden; }");
+  expect(shellOverridesSource).toContain(".agent-config-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }");
+  expect(shellOverridesSource).toContain(".agent-config-page .settings-save-bar { flex: 0 0 auto; position: static;");
 });
 
 test("Edit Agent flow targets /roles-by-id PATCH (EP-DEC-FIX B1)", () => {
@@ -2813,7 +2816,8 @@ test("WA-166 (UI-TRUNCATION): shared truncate tooltip hook covers clipped labels
   expect(settingsSource).toContain('class="auth-session-agent" \' + truncatedAttrs(authSessionLabel(s))');
   expect(settingsSource).toContain('class="peer-rule-row"><span \' + truncatedAttrs(rule.role_a_name)');
   expect(agentsSource).toContain('class="archive-title agents-agent-name"');
-  expect(agentsSource).toContain('class="agents-agent-description archive-muted"');
+  expect(agentsSource).toContain("truncatedAttrs(description) + '>'");
+  expect(agentsSource).toContain("truncatedAttrs(currentSummary) + '>'");
 
   expect(kanbanSource).not.toMatch(/class="kanban-card-title" title=/);
   expect(shellOverridesSource).toContain(".kanban-epic-drawer-head h2 { margin: 0; font-size: 18px; font-weight: 700; }");
@@ -2900,8 +2904,11 @@ test("EP-037 WA-213 agent overview uses merged archive-style table", () => {
   expect(daemonSource).toContain("summary: sessionByRoleId.get(agent.id)?.summary ?? \"\"");
   expect(shellOverridesSource).toContain(".agents-archive-board");
   expect(shellOverridesSource).toContain(".agents-archive-head, .agents-agent-row");
-  expect(shellOverridesSource).toContain(".agents-agent-summary { overflow: hidden; color: var(--text); font-size: 12.5px;");
-  expect(shellOverridesSource).toContain("-webkit-line-clamp: 2;");
+  expect(shellOverridesSource).toContain(".agents-agent-description, .agents-agent-summary { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;");
+  expect(shellOverridesSource).toContain(".agents-agent-description.expanded, .agents-agent-summary.expanded { display: block; -webkit-line-clamp: unset; overflow: visible; }");
+  expect(shellOverridesSource).toContain(".agents-archive-head, .agents-agent-row { grid-template-columns: 72px minmax(150px, .55fr) 132px minmax(180px, .95fr) minmax(260px, 2.2fr) 156px; align-items: center; }");
+  expect(agentsSource).toContain("target.dataset.action === 'toggle-overview-cell'");
+  expect(agentsSource).toContain("data-action=\"toggle-overview-cell\" data-cell-key=\"' + esc(addr) + '|summary\"");
 });
 
 test("EP-035 WA-193: special keys overlay mounts only for live terminal panels", () => {

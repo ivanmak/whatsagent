@@ -110,6 +110,10 @@ let personaTemplates = [];
 let personaTemplatesLoading = false;
 let personaTemplatesError = '';
 let agentDeleteSaving = false;
+// EP-037 follow-up: overview rows whose description/summary cell the user
+// clicked to expand past the line clamp. Keyed `${displayId}|description` /
+// `${displayId}|summary`; survives status-poll re-renders.
+const overviewExpandedCells = new Set();
 let agentPageMode = '';
 let agentPageRole = '';
 let agentPageStatus = '';
@@ -382,8 +386,8 @@ function agentCard(role) {
     + '<div class="agents-agent-avatar-cell">' + avatar + '</div>'
     + '<div class="archive-title agents-agent-name"><strong ' + truncatedAttrs(addr) + '>' + esc(addr) + '</strong>' + runtime + staleRunnerBanner(runner) + '</div>'
     + '<div class="agent-card-rbac-chips agents-agent-roles">' + roleChips + '</div>'
-    + '<div class="agents-agent-description archive-muted" ' + truncatedAttrs(description) + '>' + (description ? esc(description) : '&mdash;') + '</div>'
-    + '<div class="agent-card-summary agents-agent-summary ' + (currentSummary ? '' : 'empty') + '" ' + truncatedAttrs(currentSummary) + '>' + (currentSummary ? esc(currentSummary) : 'offline — no summary') + '</div>'
+    + '<div class="agents-agent-description archive-muted' + (description && overviewExpandedCells.has(addr + '|description') ? ' expanded' : '') + '"' + (description ? ' data-action="toggle-overview-cell" data-cell-key="' + esc(addr) + '|description"' : '') + ' ' + truncatedAttrs(description) + '>' + (description ? esc(description) : '&mdash;') + '</div>'
+    + '<div class="agent-card-summary agents-agent-summary ' + (currentSummary ? '' : 'empty') + (currentSummary && overviewExpandedCells.has(addr + '|summary') ? ' expanded' : '') + '"' + (currentSummary ? ' data-action="toggle-overview-cell" data-cell-key="' + esc(addr) + '|summary"' : '') + ' ' + truncatedAttrs(currentSummary) + '>' + (currentSummary ? esc(currentSummary) : 'offline — no summary') + '</div>'
     + '<div class="workspace-card-actions agent-card-actions agents-agent-actions">' + rowRuntimeActions(role, runner, missing) + overflow + '</div>'
     + overflowMenu
   + '</div>';
@@ -1243,7 +1247,7 @@ function runtimePillsSection(scope, current) {
 
 function operatorCheckboxHtml(id, checked) {
   return '<label class="agent-operator-checkbox-label" for="' + esc(id) + '"><input id="' + esc(id) + '" type="checkbox" ' + (checked ? 'checked ' : '') + '/> Acts on behalf of human</label>'
-    + '<div class="agent-operator-checkbox-help">Marks this agent as a human surrogate. Compose alongside another role for actual permissions.</div>';
+    + '<div class="agent-operator-checkbox-help">Turn this on for an agent that stands in for a person (like the web user) rather than running as an autonomous worker. It still needs at least one role to actually do anything.</div>';
 }
 
 function personaInputId(scope, field) {
@@ -1285,7 +1289,7 @@ function personaSectionHtml(scope, persona) {
   }).join('');
   const budgetHidden = total > PERSONA_SOFT_TOTAL ? '' : ' hidden';
   return '<section class="card settings-wide agent-config-section agent-config-persona"><div class="section-head"><div><h2>Persona</h2><p>What this agent is for — shown to peers in list_peers and the kanban assignee picker.</p></div><button type="button" class="btn secondary small" data-action="clear-agent-persona" data-persona-scope="' + esc(scope) + '">Clear persona</button></div>'
-    + '<div class="agent-persona-tools"><span>Start from template</span>' + templateControl + templateStatus + '</div>'
+    + '<div class="agent-persona-tools"><span class="agent-persona-tools-label">Start from template</span><div class="agent-persona-tools-control">' + templateControl + templateStatus + '</div></div>'
     + '<div class="agent-persona-budget' + budgetHidden + '" data-persona-budget-banner="' + esc(scope) + '">⚠ persona ≈ <span data-persona-token-count="' + esc(scope) + '">' + tokens + '</span> tokens — added to every agent launch once persona injection is enabled</div>'
     + fields
   + '</section>';
@@ -1396,6 +1400,7 @@ export function renderAgentCreatePage() {
     : '<div class="thread-empty">Add a repository before adding agents.</div>';
   $('content').innerHTML = '<div class="agent-config-page agent-config-create">'
     + '<div class="agent-config-tabbar">' + agentTabsHtml() + '</div>'
+    + '<div class="agent-config-scroll"><div class="agent-config-inner">'
     + '<div class="agent-config-crumbs"><button type="button" class="btn secondary small" data-action="agent-config-cancel">← Agents</button><span>New agent</span></div>'
     + '<section class="card settings-wide agent-config-section"><div class="section-head"><div><h2>Identity</h2><p>Repository, name, and default runtime.</p></div></div>'
       + settingRow('Repository', 'Which repo this agent belongs to.', repoSelect)
@@ -1407,8 +1412,8 @@ export function renderAgentCreatePage() {
       + '<div id="addAgentPageRolesPicker" class="agent-edit-roles" role="group" aria-label="Agent roles"></div>'
     + '</section>'
     + personaSectionHtml('add', null)
+    + '<div class="workspace-add-status" id="agentCreatePageStatus">' + esc(agentPageStatus) + '</div></div></div>'
     + settingsBottomActionBar('agent-create-page', agentPageStatus, { cancelAction: 'agent-config-cancel', saveAction: 'submit-add-agent-page', saving: addAgentSaving })
-    + '<div class="workspace-add-status" id="agentCreatePageStatus">' + esc(agentPageStatus) + '</div>'
   + '</div>';
   renderAddAgentRoles();
   if (addAgentAvailableRoles === null && !addAgentRolesLoading) void loadAddAgentRoles();
@@ -1440,6 +1445,7 @@ export function renderAgentConfigPage(roleAddress) {
     : '<section class="card settings-wide agent-config-section"><div class="section-head"><div><h2>Persona</h2><p>What this agent is for — shown to peers in list_peers and the kanban assignee picker.</p></div></div><div class="agent-persona-note' + (agentConfigPersonaState === 'error' ? ' error' : '') + '">' + (agentConfigPersonaState === 'error' ? 'Failed to load the saved persona — reopen this page to retry.' : 'Loading saved persona…') + '</div></section>';
   $('content').innerHTML = '<div class="agent-config-page">'
     + '<div class="agent-config-tabbar">' + agentTabsHtml() + '</div>'
+    + '<div class="agent-config-scroll"><div class="agent-config-inner">'
     + '<div class="agent-config-crumbs"><button type="button" class="btn secondary small" data-action="agent-config-cancel">← Agents</button><span>' + esc(addr) + '</span></div>'
     + agentConfigHeader(role)
     + '<section class="card settings-wide agent-config-section"><div class="section-head"><div><h2>Identity</h2><p>Rename the agent or change its default runtime.</p></div></div>'
@@ -1452,8 +1458,8 @@ export function renderAgentConfigPage(roleAddress) {
       + '<div id="agentEditPageRolesPicker" class="agent-edit-roles" role="group" aria-label="Agent roles"></div>'
     + '</section>'
     + personaBlock
+    + '<div class="workspace-add-status" id="agentConfigPageStatus">' + esc(agentPageStatus) + '</div></div></div>'
     + settingsBottomActionBar('agent-config-page', agentPageStatus, { cancelAction: 'agent-config-cancel', saveAction: 'submit-agent-edit-page', saving: agentEditSaving })
-    + '<div class="workspace-add-status" id="agentConfigPageStatus">' + esc(agentPageStatus) + '</div>'
   + '</div>';
   renderAgentEditRoles();
   if (agentEditAvailableRoles === null && !agentEditRolesLoading) void loadAgentEditRoles(role.id);
@@ -1909,6 +1915,7 @@ export function installAgents(c) {
     if (target.dataset.action === 'submit-agent-edit-page') { e.preventDefault(); void submitAgentEdit(); }
     if (target.dataset.action === 'agent-config-cancel') { e.preventDefault(); openAgentsOverviewPage(); }
     if (target.dataset.action === 'clear-agent-persona') { e.preventDefault(); void clearPersona(target.dataset.personaScope || 'edit'); return; }
+    if (target.dataset.action === 'toggle-overview-cell') { e.preventDefault(); const key = target.dataset.cellKey || ''; if (overviewExpandedCells.has(key)) overviewExpandedCells.delete(key); else overviewExpandedCells.add(key); target.classList.toggle('expanded'); return; }
     if (target.dataset.action === 'toggle-agent-edit-role') { e.preventDefault(); toggleAgentEditRole(target.dataset.roleId || ''); }
     if (target.dataset.action === 'toggle-add-agent-role') { e.preventDefault(); toggleAddAgentRole(target.dataset.roleId || ''); }
     if (target.dataset.action === 'delete-agent-role') { e.preventDefault(); agentOverviewMenuRole = ''; void deleteAgentRoleAction(target.dataset.role || ''); }
