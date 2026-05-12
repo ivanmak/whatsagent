@@ -323,7 +323,7 @@ test("renderWebShell emits parseable dashboard JavaScript", () => {
   expect(script).toContain("terminalController?.setPulseEnabled(currentTuiRedrawSettings().workaround === 'on')");
   expect(script).toContain("if (partial && Object.prototype.hasOwnProperty.call(partial, 'daemonSettings')) syncTuiRedrawController()");
   expect(script).toContain("patchState: (partial) => patchClientState(partial)");
-  expect(script).toContain("const activeTerminalRole = () => activeTerminal === 'overview' ? null : activeTerminal;");
+  expect(script).toContain("const activeTerminalRole = () => (page === 'agents' && agentsSubView === 'terminal'");
   // WA-065: non-terminal renders detach xterm instead of destroying it, so
   // same-role remount preserves browser-side scrollback beyond the daemon ring.
   expect(script).toContain("function detachXterm()");
@@ -1824,12 +1824,30 @@ test("renderWebShell includes Add Agent repo dropdown hooks", () => {
   expect(agentsSource).toContain("addAgentRepoId = repoId || (state.repos || [])[0]?.id || ''");
   expect(agentsSource).toContain("const repoOptions = (state.repos || []).map(repo => [repo.id, repo.name + ' - ' + repo.absolutePath])");
   expect(agentsSource).toContain("data-add-agent-repo");
-  expect(agentsSource).toContain("const repoId = String(document.querySelector('[data-add-agent-repo]')?.value || '').trim()");
+  expect(agentsSource).toContain("document.querySelector('[data-add-agent-repo-page]')?.value || document.querySelector('[data-add-agent-repo]')?.value");
   expect(agentsSource).toContain("repoId is required");
   expect(agentsSource).toContain("JSON.stringify({ repoId, name, host: runtime === 'default' ? null : runtime })");
   expect(agentsSource).toContain("workspaceFetch('/roles-by-id'");
   expect(agentsSource).not.toContain("workspaceFetch('/roles',");
   expect(agentsSource).not.toContain("const paths = Array.from(new Set((state.roles || []).map(r => r.path)");
+});
+
+test("EP-037 WA-212: agent config pages use separate sub-view routes", () => {
+  expect(clientSource).toContain("let agentsSubView = 'overview';");
+  expect(clientSource).toContain("pageParts[1] === 'new'");
+  expect(clientSource).toContain("pageParts[2] === 'settings'");
+  expect(clientSource).toContain("renderAgentConfigPage(agentsConfigRole)");
+  expect(clientSource).toContain("renderAgentCreatePage()");
+  expect(clientSource).toContain("setAgentsSubView: (next, role = '')");
+  expect(agentsSource).toContain("export function renderAgentCreatePage()");
+  expect(agentsSource).toContain("export function renderAgentConfigPage(roleAddress)");
+  expect(agentsSource).toContain("Persona profile editor not wired in WA-212");
+  expect(agentsSource).toContain("data-action=\"agent-config-cancel\"");
+  expect(agentsSource).toContain("data-action=\"submit-agent-edit-page\"");
+  expect(agentsSource).toContain("data-action=\"submit-add-agent-page\"");
+  expect(agentsSource).toContain("Delete agent</button>");
+  expect(agentsSource).toContain("agentPageMode === 'config'");
+  expect(shellOverridesSource).toContain(".agent-config-page { max-width: 980px;");
 });
 
 test("Edit Agent flow targets /roles-by-id PATCH (EP-DEC-FIX B1)", () => {
@@ -2842,7 +2860,7 @@ test("EP-035 WA-193: special keys overlay mounts only for live terminal panels",
   expect(clientSource).toContain("if (!runner || !controller || activeTerminal !== role) { unmountSpecialKeysOverlay(); return; }");
   expect(clientSource).toContain("const terminalShell = $('agentTabContent')?.querySelector?.('.terminal');");
   expect(clientSource).toContain("ensureSpecialKeysOverlay().mount(terminalShell, controller);");
-  expect(clientSource).toContain("if (page !== 'agents' || activeTerminal === 'overview') unmountSpecialKeysOverlay();");
+  expect(clientSource).toContain("if (page !== 'agents' || agentsSubView !== 'terminal' || activeTerminal === 'overview') unmountSpecialKeysOverlay();");
   expect(clientSource).toContain("const mountedController = !exitCard ? mountTerminal(roleName, body, Boolean(runner)) : null;");
   expect(clientSource).toContain("syncSpecialKeysOverlay(roleName, runner, mountedController);");
 });

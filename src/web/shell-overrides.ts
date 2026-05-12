@@ -1129,6 +1129,21 @@ export const WEB_SHELL_OVERRIDES = String.raw`
     .agents-empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-height: 320px; padding: 40px; color: var(--muted); }
     .agents-empty-title { color: var(--text); font-size: 15px; font-weight: 700; }
 
+    .agent-config-page { max-width: 980px; margin: 0 auto; padding: 18px 18px 88px; }
+    .agent-config-crumbs { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; color: var(--muted); font-size: 12px; }
+    .agent-config-head { display: flex; align-items: center; gap: 14px; margin: 0 0 16px; }
+    .agent-config-head .role-avatar { flex: 0 0 auto; }
+    .agent-config-head-copy { min-width: 0; flex: 1 1 auto; }
+    .agent-config-head-copy h1 { margin: 0; color: var(--text-strong); font-size: 20px; line-height: 1.15; }
+    .agent-config-head-copy p, .agent-config-kicker { margin: 3px 0 0; color: var(--muted); font-family: var(--font-mono); font-size: 11px; }
+    .agent-config-head-actions { flex: 0 0 auto; }
+    .agent-config-section { margin-bottom: 14px; padding: 16px; }
+    .agent-config-persona-placeholder .thread-empty { margin: 0; }
+    .agent-config-page .settings-save-bar { position: sticky; bottom: 0; z-index: 15; margin: 18px -18px -88px; padding: 12px 18px; border-top: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(8px); }
+    .agent-config-page .workspace-add-status { margin-top: 10px; color: var(--muted); font-size: 12px; }
+    .agent-config-page .workspace-add-status.error { color: var(--red); }
+    @media (max-width: 760px) { .agent-config-page { padding-inline: 12px; } .agent-config-head { align-items: flex-start; } .agent-config-head-actions { margin-left: auto; } }
+
     .agent-avatar-identicon { display: inline-flex; }
     .agent-avatar-identicon .agent-identicon { display: block; border-radius: 6px; border: 1px solid var(--border); overflow: hidden; }
 

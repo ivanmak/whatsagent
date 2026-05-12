@@ -18,6 +18,8 @@ import {
   agentsLaunchControl,
   agentsRenderLaunchDialog,
   installAgents,
+  renderAgentConfigPage,
+  renderAgentCreatePage,
   renderAgentsOverview,
   renderAgentsSettingsTabContent,
 } from "./agents.ts";
@@ -124,6 +126,8 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
     }
     let page = 'agents';
     let activeTerminal = 'overview';
+    let agentsSubView = 'overview';
+    let agentsConfigRole = '';
     let selectedThread = state.roles[0]?.name || '';
     let selectedPeer = '';
     let pendingMessageScroll = '';
@@ -286,7 +290,7 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
     const roleByName = roleByAddress;
     const hostLabel = (host) => host === 'opencode' ? 'OpenCode' : host === 'codex' ? 'Codex' : host === 'pi' ? 'Pi' : 'Claude Code';
     const hostClass = (host) => (host === 'opencode' ? 'openc' : host === 'codex' ? 'codex' : host === 'pi' ? 'pi' : 'claude');
-    const activeTerminalRole = () => activeTerminal === 'overview' ? null : activeTerminal;
+    const activeTerminalRole = () => (page === 'agents' && agentsSubView === 'terminal' && activeTerminal !== 'overview') ? activeTerminal : null;
     const liveRunners = () => state.runners.filter(r => r.reachable);
     const validSettingsTab = validSettingsTabFromSettings;
 
@@ -299,7 +303,7 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
       for (const message of newMessages || []) {
         const role = message.from_role_name;
         if (!role || !runnerFor(role)) continue;
-        if (page === 'agents' && activeTerminal === role) continue;
+        if (page === 'agents' && agentsSubView === 'terminal' && activeTerminal === role) continue;
         if (!attentionRoles[role]) changed = true;
         attentionRoles[role] = true;
       }
@@ -971,7 +975,7 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
           // EP-002 WA-007: also rerender on repo/role-list changes so the
           // initial empty agents-overview ("No repositories yet") recovers
           // once scan-on-startup populates state, without needing a click.
-          if (repoRoleChanged || activeBecameReachable || page !== 'agents' || activeTerminal === 'overview' || (activeRole && !activeNext?.reachable)) render();
+          if (repoRoleChanged || activeBecameReachable || page !== 'agents' || agentsSubView !== 'terminal' || (activeRole && !activeNext?.reachable)) render();
         }
         lastStatusLoadOk = true;
       } catch { lastStatusLoadOk = false; }
@@ -1022,6 +1026,8 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
       clearAttention(targetDisplayId);
       openLaunchMenuRole = '';
       activeTerminal = targetDisplayId;
+      agentsSubView = 'terminal';
+      agentsConfigRole = '';
       page = 'agents';
       $('launchModal').classList.add('hidden');
       // EP-002 WA-009: update the URL so F5 lands back on the freshly
@@ -1079,6 +1085,8 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
       selectedPeer = '';
       pendingMessageScroll = 'bottom';
       activeTerminal = 'overview';
+      agentsSubView = 'overview';
+      agentsConfigRole = '';
       clearObject(terminalCursors);
       clearObject(terminalSessions);
       clearObject(terminalStatusNotified);
@@ -1149,14 +1157,31 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
       }
       if (pageParts[0] === 'agents') {
         page = 'agents';
+        if (pageParts[1] === 'new') {
+          agentsSubView = 'create';
+          agentsConfigRole = '';
+          return;
+        }
+        // EP-037 / WA-212: config/create routes are a separate agents
+        // sub-view, not activeTerminal. Parse `/settings` before terminal
+        // displayId fallback so config pages do not disturb terminal state.
+        if (pageParts[1] && pageParts[2] === 'settings') {
+          const found = roleByAddress(pageParts[1]);
+          agentsSubView = 'config';
+          agentsConfigRole = found ? roleDisplayId(found) : pageParts[1];
+          return;
+        }
         // EP-DEC-RUN WA-006: normalize URL slug to displayId so two
         // bare-name peers across repos route distinctly.
         if (pageParts[1]) {
           const found = roleByAddress(pageParts[1]);
           activeTerminal = found ? roleDisplayId(found) : 'overview';
+          agentsSubView = found ? 'terminal' : 'overview';
         } else {
           activeTerminal = 'overview';
+          agentsSubView = 'overview';
         }
+        agentsConfigRole = '';
         return;
       }
       if (pageParts[0] === 'messages') {
@@ -1178,7 +1203,12 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
       if (page === 'kanban') return kanbanPathSegments();
       let tail = '/';
       if (page === 'workspaces-overview') tail = '/workspaces';
-      else if (page === 'agents') tail = activeTerminal === 'overview' ? '/agents' : '/agents/' + encodeURIComponent(activeTerminal);
+      else if (page === 'agents') {
+        if (agentsSubView === 'create') tail = '/agents/new';
+        else if (agentsSubView === 'config') tail = '/agents/' + encodeURIComponent(agentsConfigRole) + '/settings';
+        else if (agentsSubView === 'terminal' && activeTerminal !== 'overview') tail = '/agents/' + encodeURIComponent(activeTerminal);
+        else tail = '/agents';
+      }
       else if (page === 'messages') {
         const inbox = selectedThread ? '/' + encodeURIComponent(selectedThread) : '';
         const peer = selectedPeer ? '/' + encodeURIComponent(selectedPeer) : '';
@@ -1199,6 +1229,7 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
     function showPage(next, opts = {}) {
       if (next === 'kanban') { onKanbanPageSwitch(next, opts); return; }
       page = next || 'overview';
+      if (page === 'agents') { agentsSubView = 'overview'; agentsConfigRole = ''; activeTerminal = 'overview'; }
       if (page === 'messages') pendingMessageScroll = 'bottom';
       render();
       if (!opts.skipRoute) updateUrl();
@@ -1217,6 +1248,8 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
       // terminalCursors/Sessions/StatusNotified) are displayId so two
       // roles with the same bare name across repos do not collide.
       activeTerminal = roleDisplayId(role);
+      agentsSubView = 'terminal';
+      agentsConfigRole = '';
       clearAttention(roleDisplayId(role));
       render();
       updateUrl();
@@ -1226,8 +1259,12 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
     function selectAdjacent(delta) {
       if (page === 'agents') {
         const tabs = ['overview', ...state.roles.map(role => roleDisplayId(role))];
-        const current = Math.max(0, tabs.indexOf(activeTerminal));
-        activeTerminal = tabs[(current + delta + tabs.length) % tabs.length] || 'overview';
+        const currentKey = agentsSubView === 'terminal' ? activeTerminal : 'overview';
+        const current = Math.max(0, tabs.indexOf(currentKey));
+        const next = tabs[(current + delta + tabs.length) % tabs.length] || 'overview';
+        agentsSubView = next === 'overview' ? 'overview' : 'terminal';
+        activeTerminal = next;
+        agentsConfigRole = '';
         clearAttention(activeTerminal);
         render();
         updateUrl();
@@ -1450,10 +1487,12 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
     }
 
     function renderAgents() {
-      if (activeTerminal !== 'overview') clearAttention(activeTerminal);
+      if (agentsSubView === 'config') { renderAgentConfigPage(agentsConfigRole); return; }
+      if (agentsSubView === 'create') { renderAgentCreatePage(); return; }
+      if (agentsSubView === 'terminal' && activeTerminal !== 'overview') clearAttention(activeTerminal);
       const content = $('content');
       content.innerHTML = '<div class="agent-page">' + agentTabs() + '<div class="tab-content" id="agentTabContent"></div></div>';
-      if (activeTerminal === 'overview') renderAgentOverview(); else renderTerminal(activeTerminal);
+      if (agentsSubView === 'overview' || activeTerminal === 'overview') renderAgentOverview(); else renderTerminal(activeTerminal);
     }
 
     // EP-002 WA-008: tab text contract = line 1 repo display name, line 2
@@ -1486,10 +1525,10 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
       const tabs = state.roles.map(role => {
         const addr = roleDisplayId(role);
         const runner = runnerFor(addr);
-        const active = activeTerminal === addr;
+        const active = agentsSubView === 'terminal' && activeTerminal === addr;
         return '<button class="term-tab ' + (active ? 'active terminal-active' : '') + '" data-action="terminal" data-role="' + esc(addr) + '" ' + truncatedAttrs(addr) + '>' + agentTabDot(addr, runner) + peerIcon(runner?.host_type || role.host_default, 16) + agentTabLabelHtml(role) + '</button>';
       }).join('');
-      return '<div class="tabbar">' + mobileSidebarTab() + '<button class="term-tab agent-overview-tab ' + (activeTerminal === 'overview' ? 'active' : '') + '" data-action="terminal" data-role="overview">Overview <span class="badge">' + state.roles.length + '</span></button><div class="tabbar-scroll">' + tabs + '</div></div>';
+      return '<div class="tabbar">' + mobileSidebarTab() + '<button class="term-tab agent-overview-tab ' + (agentsSubView === 'overview' ? 'active' : '') + '" data-action="terminal" data-role="overview">Overview <span class="badge">' + state.roles.length + '</span></button><div class="tabbar-scroll">' + tabs + '</div></div>';
     }
 
     function renderAgentOverview() {
@@ -1498,7 +1537,7 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
     }
 
     function renderAgentOverviewIfVisible() {
-      if (page === 'agents' && activeTerminal === 'overview') renderAgentOverview();
+      if (page === 'agents' && agentsSubView === 'overview') renderAgentOverview();
     }
 
     function closeLaunchMenu() {
@@ -2113,7 +2152,7 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
       // [process exited …] status line in scrollback (node-pty-runner.mjs
       // append('status', …) flows through to the mirror's serialize), so
       // no client-side append is needed under T4 mirror-as-source.
-      setTimeout(() => { if (page === 'agents' && activeTerminal === role) refresh(); }, 400);
+      setTimeout(() => { if (page === 'agents' && agentsSubView === 'terminal' && activeTerminal === role) refresh(); }, 400);
     }
 
     function scheduleTerminalPoll() {
@@ -2132,7 +2171,7 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
       if (page === 'messages') navMessageUnreadCount = 0;
       updateNavMessageIndicator();
       document.querySelectorAll('.nav [data-page]').forEach(btn => { const navActive = btn.dataset.page === page; btn.classList.toggle('active', navActive); if (navActive) btn.setAttribute('aria-current', 'page'); else btn.removeAttribute('aria-current'); });
-      if (page !== 'agents' || activeTerminal === 'overview') unmountSpecialKeysOverlay();
+      if (page !== 'agents' || agentsSubView !== 'terminal' || activeTerminal === 'overview') unmountSpecialKeysOverlay();
       if (page === 'overview') renderOverview();
       if (page === 'agents') renderAgents();
       if (page === 'messages') renderMessages();
@@ -2168,7 +2207,7 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
       if (action === 'toggle-mobile-sidebar') toggleMobileSidebar();
       if (action === 'close-mobile-sidebar') closeMobileSidebar();
       if (action === 'auth-logout') logoutWebSession();
-      if (action === 'terminal') { activeTerminal = target.dataset.role || 'overview'; clearAttention(activeTerminal); render(); updateUrl(); }
+      if (action === 'terminal') { activeTerminal = target.dataset.role || 'overview'; agentsSubView = activeTerminal === 'overview' ? 'overview' : 'terminal'; agentsConfigRole = ''; clearAttention(activeTerminal); render(); updateUrl(); }
       if (action === 'select-thread') { selectedThread = target.dataset.role || selectedThread; selectedPeer = ''; mobileMessagesView = 'list'; messageError = ''; pendingMessageScroll = 'bottom'; render(); updateUrl(); }
       if (action === 'select-peer') { selectedPeer = target.dataset.peer || selectedPeer; mobileMessagesView = 'thread'; messageError = ''; pendingMessageScroll = 'bottom'; render(); updateUrl(); }
       if (action === 'messages-mobile-back') { mobileMessagesView = 'list'; render(); updateUrl(); }
@@ -2234,7 +2273,7 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
         getPage: () => page,
         setPage: (next) => { page = next; },
         getSelectedSettingsTab: () => selectedSettingsTab,
-        getActiveTerminal: () => activeTerminal,
+        getActiveTerminal: () => agentsSubView === 'terminal' ? activeTerminal : 'overview',
         getOpenLaunchMenuRole: () => openLaunchMenuRole,
         setOpenLaunchMenuRole: (next) => { openLaunchMenuRole = next; },
         getSelectedLaunchRole: () => selectedLaunchRole,
@@ -2296,7 +2335,9 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
         liveRunners,
         registerResetHook: (fn) => registerResetHook(fn),
         getSelectedThread: () => selectedThread,
-        setActiveTerminal: (next) => { activeTerminal = next; },
+        setActiveTerminal: (next) => { activeTerminal = next; agentsSubView = next === 'overview' ? 'overview' : 'terminal'; agentsConfigRole = ''; },
+        getAgentsSubView: () => agentsSubView,
+        setAgentsSubView: (next, role = '') => { agentsSubView = next || 'overview'; agentsConfigRole = role || ''; if (agentsSubView !== 'terminal') activeTerminal = 'overview'; },
         showPage: (next) => showPage(next),
         getTabId: () => TAB_ID,
         appendTerminal,
@@ -2587,7 +2628,7 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
       try {
         if (typeof sortMenuOpen !== 'undefined' && sortMenuOpen) {
           sortMenuOpen = false;
-          if (page === 'agents' && activeTerminal === 'overview') renderAgentOverview();
+          if (page === 'agents' && agentsSubView === 'overview') renderAgentOverview();
         }
       } catch {}
     }
