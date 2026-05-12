@@ -62,7 +62,8 @@ import {
   type RoleWithDisplayRow,
 } from "../workspace-decoupling-dao.ts";
 import { createCustomPrompt, deleteCustomPrompt, DuplicateCustomPromptTitleError, listCustomPrompts, updateCustomPrompt } from "../custom-prompts-dao.ts";
-import { getAgentPersona, listAgentPersonas, personaForPeers, personaForWhoami } from "../agent-personas-dao.ts";
+import { deleteAgentPersona, getAgentPersona, listAgentPersonas, personaForPeers, personaForWhoami, upsertAgentPersona, type AgentPersonaInput } from "../agent-personas-dao.ts";
+import { PERSONA_TEMPLATES } from "../persona-templates.ts";
 import { getAgentRoles, getEffectiveGrants } from "../rbac-dao.ts";
 import { clearSessionForcePwdReset, consumeRecovery, countAuthUsers, createAuthUser, deleteSession, deleteSessionsForUser, getAuthUserByUsername, getSessionByTokenHash, incFailedAttempts, listSessionsForUser, regenerateRecovery, resetFailedAttempts, setLockedUntil, updateAuthUserPassword } from "../auth-dao.ts";
 import { hashPassword, verifyPassword } from "../auth-hash.ts";
@@ -2076,9 +2077,10 @@ interface ApiRole {
   defaultHostType: HostType | null;
   createdAt: string;
   updatedAt: string;
+  persona?: ReturnType<typeof personaForWhoami>;
 }
 
-function roleToApi(role: RoleWithDisplayRow): ApiRole {
+function roleToApi(role: RoleWithDisplayRow, db?: Database): ApiRole {
   return {
     id: role.id,
     name: role.name,
@@ -2089,15 +2091,35 @@ function roleToApi(role: RoleWithDisplayRow): ApiRole {
     defaultHostType: role.default_host_type,
     createdAt: role.created_at,
     updatedAt: role.updated_at,
+    ...(db ? { persona: personaForWhoami(getAgentPersona(db, role.id)) } : {}),
   };
 }
 
+function writeAgentPersonaFromBody(db: Database, agentId: string, body: Record<string, unknown>): string[] {
+  if (!Object.prototype.hasOwnProperty.call(body, "persona")) return [];
+  const persona = body.persona;
+  if (persona === null) {
+    deleteAgentPersona(db, agentId);
+    return [];
+  }
+  if (!persona || typeof persona !== "object" || Array.isArray(persona)) throw new Error("persona must be an object or null");
+  return upsertAgentPersona(db, agentId, persona as AgentPersonaInput).warnings;
+}
+
 async function listRolesByIdEndpoint(_state: DaemonState, ws: WorkspaceState): Promise<Response> {
-  return json({ ok: true, roles: listAgentsByWorkspace(ws.db).map(roleToApi) });
+  return json({ ok: true, roles: listAgentsByWorkspace(ws.db).map((role) => roleToApi(role, ws.db)) });
+}
+
+async function getRoleByIdEndpoint(_state: DaemonState, ws: WorkspaceState, roleId: string): Promise<Response> {
+  const resolved = resolveRoleByIdOrDisplay(ws, roleId);
+  if ("error" in resolved) return resolved.error;
+  const role = daoGetRoleById(ws.db, resolved.role.id);
+  if (!role) return json({ ok: false, error: "role not found" }, { status: 404 });
+  return json({ ok: true, role: roleToApi(role, ws.db) });
 }
 
 async function addRoleByIdEndpoint(state: DaemonState, ws: WorkspaceState, input: unknown): Promise<Response> {
-  const body = input && typeof input === "object" ? input as { repoId?: unknown; name?: unknown; host?: unknown } : {};
+  const body = input && typeof input === "object" ? input as { repoId?: unknown; name?: unknown; host?: unknown; persona?: unknown } : {};
   const repoId = typeof body.repoId === "string" && body.repoId.trim() ? body.repoId.trim() : "";
   const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : "";
   if (!repoId) return json({ ok: false, error: "repoId is required" }, { status: 400 });
@@ -2120,9 +2142,19 @@ async function addRoleByIdEndpoint(state: DaemonState, ws: WorkspaceState, input
     catch { return json({ ok: false, error: "invalid host" }, { status: 400 }); }
   }
   try {
-    const role = daoInsertRole(ws.db, { repoId, name: canonicalName, host });
+    let role: RoleWithDisplayRow | null = null;
+    let warnings: string[] = [];
+    ws.db.run("BEGIN");
+    try {
+      role = daoInsertRole(ws.db, { repoId, name: canonicalName, host });
+      warnings = writeAgentPersonaFromBody(ws.db, role.id, body as Record<string, unknown>);
+      ws.db.run("COMMIT");
+    } catch (e) {
+      ws.db.run("ROLLBACK");
+      throw e;
+    }
     state.logger.info("role.created", { workspace: ws.id, role: role.id, displayId: role.display_id });
-    return json({ ok: true, role: roleToApi(role) });
+    return json({ ok: true, role: roleToApi(role, ws.db), warnings });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return json({ ok: false, error: msg }, { status: msg.includes("already exists") ? 409 : 400 });
@@ -2132,7 +2164,7 @@ async function addRoleByIdEndpoint(state: DaemonState, ws: WorkspaceState, input
 async function patchRoleByIdEndpoint(state: DaemonState, ws: WorkspaceState, roleId: string, input: unknown): Promise<Response> {
   const role = daoGetRoleById(ws.db, roleId);
   if (!role) return json({ ok: false, error: "role not found" }, { status: 404 });
-  const body = input && typeof input === "object" ? input as { name?: unknown; host?: unknown } : {};
+  const body = input && typeof input === "object" ? input as { name?: unknown; host?: unknown; persona?: unknown } : {};
   let next = role;
   try {
     if (typeof body.name === "string") {
@@ -2176,8 +2208,10 @@ async function patchRoleByIdEndpoint(state: DaemonState, ws: WorkspaceState, rol
         [host ?? "claude-code", host, ts, roleId]);
       next = daoGetRoleById(ws.db, roleId)!;
     }
+    const warnings = writeAgentPersonaFromBody(ws.db, role.id, body as Record<string, unknown>);
+    next = daoGetRoleById(ws.db, role.id) ?? next;
     state.logger.info("role.patched", { workspace: ws.id, role: roleId, displayId: next.display_id });
-    return json({ ok: true, role: roleToApi(next) });
+    return json({ ok: true, role: roleToApi(next, ws.db), warnings });
   } catch (e) {
     return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 400 });
   }
@@ -5153,6 +5187,7 @@ export async function startDaemon(opts: { port?: number; consoleLogs?: boolean; 
           if (req.method === "GET" && rest === "roles-by-id") return await listRolesByIdEndpoint(state, ws);
           if (req.method === "POST" && rest === "roles-by-id") return await addRoleByIdEndpoint(state, ws, await readJson<unknown>(req));
           const wsRoleByIdMatch = rest.match(/^roles-by-id\/([^/]+)$/);
+          if (req.method === "GET" && wsRoleByIdMatch) return await getRoleByIdEndpoint(state, ws, decodeURIComponent(wsRoleByIdMatch[1]!));
           if (req.method === "PATCH" && wsRoleByIdMatch) return await patchRoleByIdEndpoint(state, ws, decodeURIComponent(wsRoleByIdMatch[1]!), await readJson<unknown>(req));
           if (req.method === "DELETE" && wsRoleByIdMatch) return await deleteRoleByIdEndpoint(state, ws, decodeURIComponent(wsRoleByIdMatch[1]!));
           if (req.method === "GET" && rest === "scan-dirs") return await listScanDirsEndpoint(state, ws);
@@ -5343,6 +5378,9 @@ export async function startDaemon(opts: { port?: number; consoleLogs?: boolean; 
         }
         if (req.method === "POST" && url.pathname === "/api/v1/settings/custom-prompts") {
           return await createCustomPromptEndpoint(state, await readJson<unknown>(req));
+        }
+        if (req.method === "GET" && url.pathname === "/api/v1/persona-templates") {
+          return json({ ok: true, templates: PERSONA_TEMPLATES });
         }
         const customPromptMatch = url.pathname.match(/^\/api\/v1\/settings\/custom-prompts\/([^/]+)$/);
         if (customPromptMatch) {

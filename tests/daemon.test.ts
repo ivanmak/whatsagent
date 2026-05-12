@@ -4132,6 +4132,61 @@ test("EP-031 review fix: globalDefaultHost accepts 'pi' (was 400 pre-fix)", asyn
   }
 });
 
+test("EP-037 WA-216 role endpoints read and write persona plus templates", async () => {
+  const root = await tempProject();
+  try {
+    await initFleet(root);
+    const daemon = await startDaemon(root, { port: 0, consoleLogs: false });
+    const wsBase = await currentWsBase(daemon.url);
+    try {
+      const templates = await fetch(`${daemon.url}/api/v1/persona-templates`).then((r) => r.json()) as { ok: boolean; templates: Array<{ id: string }> };
+      expect(templates.ok).toBe(true);
+      expect(templates.templates.map((t) => t.id)).toContain("engineer");
+
+      const status = await fetch(`${daemon.url}${wsBase}/status`).then((r) => r.json()) as { repos: Array<{ id: string; name: string }> };
+      const repo = status.repos.find((item) => item.name === "architect") ?? status.repos[0];
+      if (!repo) throw new Error("expected seeded repo");
+
+      const create = await fetch(`${daemon.url}${wsBase}/roles-by-id`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repoId: repo.id,
+          name: "persona-agent",
+          persona: { description: "x".repeat(281), responsibilities: "Owns persona endpoint tests", extra_prompt: "private launch note" },
+        }),
+      });
+      const createBody = await create.json() as { ok: boolean; role: { id: string; persona: Record<string, string> | null }; warnings: string[] };
+      expect(create.ok).toBe(true);
+      expect(createBody.role.persona).toMatchObject({ description: "x".repeat(281), responsibilities: "Owns persona endpoint tests", extra_prompt: "private launch note" });
+      expect(createBody.warnings.some((warning) => warning.includes("description"))).toBe(true);
+
+      const readCreated = await fetch(`${daemon.url}${wsBase}/roles-by-id/${encodeURIComponent(createBody.role.id)}`).then((r) => r.json()) as { role: { persona: Record<string, string> | null } };
+      expect(readCreated.role.persona).toMatchObject({ extra_prompt: "private launch note" });
+
+      const patchNameOnly = await fetch(`${daemon.url}${wsBase}/roles-by-id/${encodeURIComponent(createBody.role.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ host: "pi" }),
+      }).then((r) => r.json()) as { role: { persona: Record<string, string> | null }; warnings: string[] };
+      expect(patchNameOnly.role.persona).toMatchObject({ extra_prompt: "private launch note" });
+      expect(patchNameOnly.warnings).toEqual([]);
+
+      const clear = await fetch(`${daemon.url}${wsBase}/roles-by-id/${encodeURIComponent(createBody.role.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ persona: { description: "", responsibilities: "", boundaries: "", skills: "", working_style: "", extra_prompt: "" } }),
+      }).then((r) => r.json()) as { role: { persona: Record<string, string> | null }; warnings: string[] };
+      expect(clear.role.persona).toBeNull();
+      expect(clear.warnings).toEqual([]);
+    } finally {
+      daemon.stop();
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("workspace management endpoints rename workspaces and update trash retention", async () => {
   const root = await tempProject();
   try {
