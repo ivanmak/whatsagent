@@ -4172,6 +4172,20 @@ test("EP-037 WA-216 role endpoints read and write persona plus templates", async
       expect(patchNameOnly.role.persona).toMatchObject({ extra_prompt: "private launch note" });
       expect(patchNameOnly.warnings).toEqual([]);
 
+      // EP-037 (advisor blocker): an over-hard-cap persona must reject the
+      // whole PATCH — neither the rename nor the persona may be partially
+      // applied.
+      const beforeReject = await fetch(`${daemon.url}${wsBase}/roles-by-id/${encodeURIComponent(createBody.role.id)}`).then((r) => r.json()) as { role: { name: string; persona: Record<string, string> | null } };
+      const reject = await fetch(`${daemon.url}${wsBase}/roles-by-id/${encodeURIComponent(createBody.role.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "persona-agent-renamed", persona: { extra_prompt: "y".repeat(32_001) } }),
+      });
+      expect(reject.status).toBe(400);
+      const afterReject = await fetch(`${daemon.url}${wsBase}/roles-by-id/${encodeURIComponent(createBody.role.id)}`).then((r) => r.json()) as { role: { name: string; persona: Record<string, string> | null } };
+      expect(afterReject.role.name).toBe(beforeReject.role.name);
+      expect(afterReject.role.persona).toEqual(beforeReject.role.persona);
+
       const clear = await fetch(`${daemon.url}${wsBase}/roles-by-id/${encodeURIComponent(createBody.role.id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },

@@ -55,6 +55,15 @@ export function getAgentPersona(db: Database, agentId: string): AgentPersonaRow 
   return db.query<AgentPersonaRow, [string]>("SELECT * FROM agent_personas WHERE agent_id = ?").get(agentId) ?? null;
 }
 
+/**
+ * Hard-limit check that performs no writes — callers (e.g. the role PATCH
+ * endpoint) run this before any other mutation so an oversized persona is
+ * rejected without partially-applied side effects.
+ */
+export function assertPersonaInputWithinHardLimits(input: AgentPersonaInput): void {
+  assertPersonaWithinHardLimits(normalizePersonaFields(input));
+}
+
 export function upsertAgentPersona(db: Database, agentId: string, input: AgentPersonaInput): { row: AgentPersonaRow | null; warnings: string[] } {
   const fields = normalizePersonaFields(input);
   assertPersonaWithinHardLimits(fields);

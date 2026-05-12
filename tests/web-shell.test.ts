@@ -1856,7 +1856,7 @@ test("Edit Agent flow targets /roles-by-id PATCH (EP-DEC-FIX B1)", () => {
   // endpoint, not the legacy /roles/:name route which returns 410.
   expect(agentsSource).toContain("agentEditingRole = { id: role.id,");
   expect(agentsSource).toContain("workspaceFetch('/roles-by-id/' + encodeURIComponent(agentEditingRole.id)");
-  expect(agentsSource).toContain("{ name, host: runtime === 'default' ? null : runtime, persona: personaValuesFromInputs('edit') }");
+  expect(agentsSource).toContain("const body = { name, host: runtime === 'default' ? null : runtime };");
   expect(agentsSource).not.toMatch(/workspaceFetch\('\/roles\/' \+ encodeURIComponent\(agentEditingRole\.originalName\)/);
   expect(agentsSource).not.toContain("defaultHost: runtime === 'default'");
 });
@@ -2861,7 +2861,13 @@ test("EP-037 WA-217 persona editor wires templates, warnings, clear, and save", 
   expect(agentsSource).toContain("function clearPersona(scope)");
   expect(agentsSource).toContain("confirmLabel: 'Clear persona'");
   expect(agentsSource).toContain("persona: personaValuesFromInputs('add')");
-  expect(agentsSource).toContain("persona: personaValuesFromInputs('edit')");
+  // EP-037 (advisor blocker 1): the edit page must load the full persona row
+  // via GET /roles-by-id/:id before rendering its editor, and must not PATCH
+  // persona until those inputs exist — otherwise a partial form wipes the
+  // non-description fields that /status never carries.
+  expect(agentsSource).toContain("async function loadAgentConfigPersona(agentId)");
+  expect(agentsSource).toContain("agentConfigPersonaState === 'ready'");
+  expect(agentsSource).toContain("if ($(personaInputId('edit', 'description'))) body.persona = personaValuesFromInputs('edit')");
   expect(agentsSource).toContain("Array.isArray(respBody.warnings) && respBody.warnings.length");
   expect(shellOverridesSource).toContain(".agent-persona-tools");
   expect(shellOverridesSource).toContain(".agent-persona-field-warning");

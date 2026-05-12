@@ -62,7 +62,7 @@ import {
   type RoleWithDisplayRow,
 } from "../workspace-decoupling-dao.ts";
 import { createCustomPrompt, deleteCustomPrompt, DuplicateCustomPromptTitleError, listCustomPrompts, updateCustomPrompt } from "../custom-prompts-dao.ts";
-import { deleteAgentPersona, getAgentPersona, listAgentPersonas, personaForPeers, personaForWhoami, upsertAgentPersona, type AgentPersonaInput } from "../agent-personas-dao.ts";
+import { assertPersonaInputWithinHardLimits, deleteAgentPersona, getAgentPersona, listAgentPersonas, personaForPeers, personaForWhoami, upsertAgentPersona, type AgentPersonaInput } from "../agent-personas-dao.ts";
 import { PERSONA_TEMPLATES } from "../persona-templates.ts";
 import { getAgentRoles, getEffectiveGrants } from "../rbac-dao.ts";
 import { clearSessionForcePwdReset, consumeRecovery, countAuthUsers, createAuthUser, deleteSession, deleteSessionsForUser, getAuthUserByUsername, getSessionByTokenHash, incFailedAttempts, listSessionsForUser, regenerateRecovery, resetFailedAttempts, setLockedUntil, updateAuthUserPassword } from "../auth-dao.ts";
@@ -2165,6 +2165,17 @@ async function patchRoleByIdEndpoint(state: DaemonState, ws: WorkspaceState, rol
   const role = daoGetRoleById(ws.db, roleId);
   if (!role) return json({ ok: false, error: "role not found" }, { status: 404 });
   const body = input && typeof input === "object" ? input as { name?: unknown; host?: unknown; persona?: unknown } : {};
+  // EP-037 (advisor): validate the persona before applying any rename/runtime
+  // mutation so a malformed or hard-cap-exceeding persona is rejected with
+  // nothing persisted. `writeAgentPersonaFromBody` re-checks (idempotent).
+  if (Object.prototype.hasOwnProperty.call(body, "persona") && body.persona !== null) {
+    const persona = body.persona;
+    if (!persona || typeof persona !== "object" || Array.isArray(persona)) {
+      return json({ ok: false, error: "persona must be an object or null" }, { status: 400 });
+    }
+    try { assertPersonaInputWithinHardLimits(persona as AgentPersonaInput); }
+    catch (e) { return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 400 }); }
+  }
   let next = role;
   try {
     if (typeof body.name === "string") {

@@ -112,6 +112,12 @@ let agentDeleteSaving = false;
 let agentPageMode = '';
 let agentPageRole = '';
 let agentPageStatus = '';
+// EP-037: the agents-overview /status snapshot only carries persona.description,
+// so the edit page fetches the full persona row separately before rendering its
+// editor. Until it loads we show a placeholder and refuse to submit persona — a
+// partial form would otherwise wipe responsibilities/boundaries/skills/etc.
+let agentConfigPersona = null;
+let agentConfigPersonaState = 'idle'; // 'idle' | 'loading' | 'ready' | 'error'
 let agentsHeaderMenuOpen = false;
 let repoMenuOpenId = '';
 let repoEditState = null; // { id, name, absolutePath, mode: 'add'|'edit' }
@@ -1024,7 +1030,7 @@ async function submitAddAgent() {
         return;
       }
     }
-    if (Array.isArray(respBody.warnings) && respBody.warnings.length) showToast(respBody.warnings.join('\n'), { type: 'warning' });
+    if (Array.isArray(respBody.warnings) && respBody.warnings.length) showToast(respBody.warnings.join('\n'), { title: 'Persona size warning' });
     $('addAgentModal')?.classList.add('hidden');
     await refreshDiscoveredRoles();
     if (agentPageMode === 'create') openAgentsOverviewPage();
@@ -1162,7 +1168,12 @@ async function submitAgentEdit() {
   setAgentPageStatus('Saving…', false);
   try {
     if (!agentEditingRole.id) throw new Error('role id missing');
-    const body = { name, host: runtime === 'default' ? null : runtime, persona: personaValuesFromInputs('edit') };
+    const body = { name, host: runtime === 'default' ? null : runtime };
+    // EP-037: only PATCH persona once the full saved persona has loaded into
+    // the editor — until then the persona section is a placeholder with no
+    // inputs, and submitting an empty/partial form would wipe the stored
+    // responsibilities/boundaries/skills/working_style/extra_prompt fields.
+    if ($(personaInputId('edit', 'description'))) body.persona = personaValuesFromInputs('edit');
     const res = await workspaceFetch('/roles-by-id/' + encodeURIComponent(agentEditingRole.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const respBody = await res.json().catch(() => ({}));
     if (!res.ok || respBody.ok === false) throw new Error(respBody.error || 'edit failed');
@@ -1180,7 +1191,7 @@ async function submitAgentEdit() {
         throw new Error('roles save failed: ' + (rolesBody.error || rolesRes.statusText));
       }
     }
-    if (Array.isArray(respBody.warnings) && respBody.warnings.length) showToast(respBody.warnings.join('\n'), { type: 'warning' });
+    if (Array.isArray(respBody.warnings) && respBody.warnings.length) showToast(respBody.warnings.join('\n'), { title: 'Persona size warning' });
     $('agentEditModal')?.classList.add('hidden');
     agentEditingRole = null;
     await refreshDiscoveredRoles();
@@ -1418,7 +1429,12 @@ export function renderAgentConfigPage(roleAddress) {
     agentEditAssignedRoleIds = new Set();
     agentEditRolesError = '';
     agentEditRolesLoading = false;
+    agentConfigPersona = null;
+    agentConfigPersonaState = 'idle';
   }
+  const personaBlock = agentConfigPersonaState === 'ready'
+    ? personaSectionHtml('edit', agentConfigPersona)
+    : '<section class="card settings-wide agent-config-section"><div class="section-head"><div><h2>Persona</h2><p>What this agent is for — shown to peers in list_peers and the kanban assignee picker.</p></div></div><div class="agent-persona-note' + (agentConfigPersonaState === 'error' ? ' error' : '') + '">' + (agentConfigPersonaState === 'error' ? 'Failed to load the saved persona — reopen this page to retry.' : 'Loading saved persona…') + '</div></section>';
   $('content').innerHTML = '<div class="agent-config-page">'
     + '<div class="agent-config-crumbs"><button type="button" class="btn secondary small" data-action="agent-config-cancel">← Agents</button><span>' + esc(addr) + '</span></div>'
     + agentConfigHeader(role)
@@ -1431,13 +1447,31 @@ export function renderAgentConfigPage(roleAddress) {
       + operatorCheckboxHtml('agentEditPageOperatorCheckbox', false)
       + '<div id="agentEditPageRolesPicker" class="agent-edit-roles" role="group" aria-label="Agent roles"></div>'
     + '</section>'
-    + personaSectionHtml('edit', role.persona)
-    + settingsBottomActionBar('agent-config-page', agentPageStatus, { cancelAction: 'agent-config-cancel', saveAction: 'submit-agent-edit-page', saving: agentEditSaving, dangerAction: 'delete-agent-role', dangerLabel: 'Delete agent', dangerDisabled: Boolean(runnerFor(addr)) })
+    + personaBlock
+    + settingsBottomActionBar('agent-config-page', agentPageStatus, { cancelAction: 'agent-config-cancel', saveAction: 'submit-agent-edit-page', saving: agentEditSaving })
     + '<div class="workspace-add-status" id="agentConfigPageStatus">' + esc(agentPageStatus) + '</div>'
   + '</div>';
   renderAgentEditRoles();
   if (agentEditAvailableRoles === null && !agentEditRolesLoading) void loadAgentEditRoles(role.id);
+  if (agentConfigPersonaState === 'idle') void loadAgentConfigPersona(role.id);
   void ensurePersonaTemplatesLoaded();
+}
+
+async function loadAgentConfigPersona(agentId) {
+  agentConfigPersonaState = 'loading';
+  agentConfigPersona = null;
+  try {
+    const res = await workspaceFetch('/roles-by-id/' + encodeURIComponent(agentId));
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body.ok === false) throw new Error(body.error || 'failed to load agent');
+    agentConfigPersona = body.role?.persona || null;
+    agentConfigPersonaState = 'ready';
+  } catch (e) {
+    agentConfigPersonaState = 'error';
+    setAgentPageStatus('Failed to load saved persona — reopen the page to retry. ' + String(e?.message || e), true);
+  }
+  // Re-render only if we are still on this agent's config page.
+  if (getPage() === 'agents' && agentPageMode === 'config' && agentEditingRole?.id === agentId) renderAgentConfigPage(agentPageRole);
 }
 
 function openAgentsOverviewPage() {
