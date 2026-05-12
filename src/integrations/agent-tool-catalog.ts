@@ -101,7 +101,7 @@ const ENTRIES: ReadonlyArray<Omit<AgentToolDef, "family" | "summarize">> = [
   },
   {
     name: "list_peers",
-    description: "List other WhatsAgent agents in this workspace — `displayId`, `repo`, `name`, `roles[]` (RBAC role-name assignments per peer), `isMain`, `active`. Caller is excluded; use `whoami` for self-introspection.",
+    description: "List other WhatsAgent agents in this workspace — `displayId`, `repo`, `name`, `roles[]` (RBAC role-name assignments per peer), `persona` description (or fuller persona with details), `isMain`, `active`. Caller is excluded; use `whoami` for self-introspection.",
     inputSchema: {
       type: "object",
       properties: {

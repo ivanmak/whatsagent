@@ -2223,6 +2223,14 @@ test("EP-003 WA-013: epic dep card unified with kanban board card via shared ren
   expect(shellOverridesSource).toContain(".kanban-card-repo-line");
 });
 
+test("EP-037 WA-218: kanban assignee surfaces persona description", () => {
+  expect(kanbanSource).toContain("function rolePersonaDescription(role)");
+  expect(kanbanSource).toContain("kanban-lane-agent-desc");
+  expect(kanbanSource).toContain("kanban-detail-persona");
+  expect(shellOverridesSource).toContain(".kanban-lane-agent .kanban-lane-agent-desc");
+  expect(shellOverridesSource).toContain(".kanban-detail-grid .kanban-detail-persona");
+});
+
 test("EP-003 WA-012: kanban + epic board column header renamed Repo & Agent; lane head shows repoName + roleName + identicon", () => {
   // Both board surfaces (kanbanBoard + renderKanbanBoardForTasks) use the new label.
   expect(kanbanSource).not.toContain('"kanban-board-agent-head">Agent</div>');

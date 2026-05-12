@@ -88,7 +88,7 @@ do that before continuing. Reply only when substantive; do not auto-acknowledge.
 
   register("list_peers", {
     title: "List Peers",
-    description: "List other WhatsAgent agents in this workspace — `displayId`, `repo`, `name`, `roles[]` (RBAC role-name assignments per peer), `isMain`, `active`. Caller is excluded; use `whoami` for self-introspection.",
+    description: "List other WhatsAgent agents in this workspace — `displayId`, `repo`, `name`, `roles[]` (RBAC role-name assignments per peer), `persona` description (or fuller persona with details), `isMain`, `active`. Caller is excluded; use `whoami` for self-introspection.",
     inputSchema: {
       details: z.boolean().optional().describe("Include safe runtime, summary, and attention metadata."),
     },

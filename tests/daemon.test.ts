@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { createAuthUser, createSession, createSessionCsrfToken } from "../src/auth-dao.ts";
 import { AUTH_COOKIE_NAME, CSRF_HEADER_NAME, hashSessionToken } from "../src/auth-session.ts";
 import { createKanbanEpic, createKanbanTask, getRoleByName, insertAgentSessionCredential, insertLaunchToken, insertMessage, listPendingMessages, migrate, openFleetDb, postChannelMessage, setKanbanEpicCloseApprovalPending, type RuntimeCommands } from "../src/db.ts";
+import { upsertAgentPersona } from "../src/agent-personas-dao.ts";
 import { listAudit } from "../src/audit-log-dao.ts";
 import { getDaemonRuntimeSettings, migrateDaemonDb, openDaemonDb, setCurrentWorkspaceId, setDaemonRuntimeSettings, setTuiRedrawSettings } from "../src/daemon-db.ts";
 import { hashLaunchToken } from "../src/integrations/launch-token.ts";
@@ -3263,6 +3264,27 @@ test("messaging APIs enforce star topology and active delivery", async () => {
       insertTestLaunchToken(root, "architect", architect.session_id, "architect-token");
       insertTestLaunchToken(root, "serviceA", serviceA.session_id, "service-a-token");
       insertTestLaunchToken(root, "serviceB", serviceB.session_id, "service-b-token");
+      {
+        const db = openFleetDb(fleetPaths(root).dbPath);
+        try {
+          migrate(db);
+          const architectRole = getRoleByName(db, "architect");
+          const serviceARole = getRoleByName(db, "serviceA");
+          if (!architectRole || !serviceARole) throw new Error("expected test roles");
+          upsertAgentPersona(db, architectRole.id, { description: "Coordinates fleet work", responsibilities: "Plan and route work", extra_prompt: "private charter" });
+          upsertAgentPersona(db, serviceARole.id, { description: "Builds service A", skills: "TypeScript and tests", extra_prompt: "do not leak" });
+        } finally {
+          db.close();
+        }
+      }
+
+      const whoami = await fetch(`${daemon.url}/api/v1/agent/whoami`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId: wsId, role: "architect", sessionId: architect.session_id, token: "architect-token" }),
+      });
+      expect(whoami.ok).toBe(true);
+      expect(await whoami.json()).toMatchObject({ persona: { description: "Coordinates fleet work", responsibilities: "Plan and route work", extra_prompt: "private charter" } });
 
       await fetch(`${daemon.url}/api/v1/agent/set-summary`, {
         method: "POST",
@@ -3293,12 +3315,27 @@ test("messaging APIs enforce star topology and active delivery", async () => {
       expect(serviceAEntry).toHaveProperty("displayId");
       expect(serviceAEntry).toHaveProperty("repo");
       expect(serviceAEntry).toHaveProperty("roles");
+      expect(serviceAEntry).toHaveProperty("persona");
+      expect(serviceAEntry).toMatchObject({ persona: { description: "Builds service A", skills: "TypeScript and tests" } });
+      expect(JSON.stringify(serviceAEntry)).not.toContain("do not leak");
+      expect(detailedPeersBody.peers.find((p) => p.name === "serviceB")).toMatchObject({ persona: null });
       expect(Array.isArray((serviceAEntry as { roles: unknown }).roles)).toBe(true);
       expect(serviceAEntry).not.toHaveProperty("path");
       expect(serviceAEntry).not.toHaveProperty("git_root");
       expect(serviceAEntry).not.toHaveProperty("repo_id");
       expect(JSON.stringify(detailedPeersBody)).not.toContain("launchToken");
       expect(JSON.stringify(detailedPeersBody)).not.toContain("control_url");
+
+      const basePeers = await fetch(`${daemon.url}/api/v1/agent/list-peers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId: wsId, role: "architect", sessionId: architect.session_id, token: "architect-token" }),
+      });
+      expect(basePeers.ok).toBe(true);
+      const basePeersBody = await basePeers.json() as { peers: Array<Record<string, unknown>> };
+      expect(basePeersBody.peers.find((p) => p.name === "serviceA")).toMatchObject({ persona: { description: "Builds service A" } });
+      expect(JSON.stringify(basePeersBody.peers.find((p) => p.name === "serviceA"))).not.toContain("TypeScript and tests");
+      expect(basePeersBody.peers.find((p) => p.name === "serviceB")).toMatchObject({ persona: null });
 
       // EP-022 / WA-098: legacy `/api/v1/agent/list-roles` URL is gone
       // (the agent-API regex no longer matches it). Response is 404.

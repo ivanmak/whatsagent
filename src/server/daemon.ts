@@ -62,6 +62,7 @@ import {
   type RoleWithDisplayRow,
 } from "../workspace-decoupling-dao.ts";
 import { createCustomPrompt, deleteCustomPrompt, DuplicateCustomPromptTitleError, listCustomPrompts, updateCustomPrompt } from "../custom-prompts-dao.ts";
+import { getAgentPersona, listAgentPersonas, personaForPeers, personaForWhoami } from "../agent-personas-dao.ts";
 import { getAgentRoles, getEffectiveGrants } from "../rbac-dao.ts";
 import { clearSessionForcePwdReset, consumeRecovery, countAuthUsers, createAuthUser, deleteSession, deleteSessionsForUser, getAuthUserByUsername, getSessionByTokenHash, incFailedAttempts, listSessionsForUser, regenerateRecovery, resetFailedAttempts, setLockedUntil, updateAuthUserPassword } from "../auth-dao.ts";
 import { hashPassword, verifyPassword } from "../auth-hash.ts";
@@ -804,13 +805,18 @@ function isNonLoopbackBind(host: string): boolean {
   return normalized !== "127.0.0.1" && normalized !== "localhost" && normalized !== "::1" && normalized !== "[::1]";
 }
 
-function agentOverviewRoles(db: Database, agents: AgentRow[]): Array<AgentRow & { roles: string[]; summary: string }> {
+function agentOverviewRoles(db: Database, agents: AgentRow[]): Array<AgentRow & { roles: string[]; summary: string; persona: { description: string } | null }> {
   const sessionByRoleId = new Map(listRunningSessionDetails(db).map((session) => [session.role_id, session]));
-  return agents.map((agent) => ({
-    ...agent,
-    roles: getAgentRoles(db, agent.id).map((role) => role.name),
-    summary: sessionByRoleId.get(agent.id)?.summary ?? "",
-  }));
+  const personasByAgentId = listAgentPersonas(db, agents.map((agent) => agent.id));
+  return agents.map((agent) => {
+    const persona = personasByAgentId.get(agent.id);
+    return {
+      ...agent,
+      roles: getAgentRoles(db, agent.id).map((role) => role.name),
+      summary: sessionByRoleId.get(agent.id)?.summary ?? "",
+      persona: persona?.description ? { description: persona.description } : null,
+    };
+  });
 }
 
 async function snapshot(state: DaemonState, ws: WorkspaceState): Promise<{
@@ -4724,6 +4730,7 @@ async function handleAgentApi(state: DaemonState, ws: WorkspaceState, action: st
       policy: { mode: getPolicyMode(db) },
       grants,
       rbac: { mode: effectiveRbacMode(ws.rbacMode, state.rbacModeCeiling) },
+      persona: personaForWhoami(getAgentPersona(db, context.role.id)),
     });
   }
   if (action === "list-peers") {
@@ -4739,11 +4746,12 @@ async function handleAgentApi(state: DaemonState, ws: WorkspaceState, action: st
     // callers can pick a peer by capability ("need verdict → find a
     // reviewer") instead of guessing from name. Also exclude the
     // caller themself — `whoami` already covers self-introspection.
-    const peers = listAgents(db)
-      .filter((agent) => agent.id !== context.role.id)
-      .map((agent) => {
+    const peerAgents = listAgents(db).filter((agent) => agent.id !== context.role.id);
+    const personasByAgentId = listAgentPersonas(db, peerAgents.map((agent) => agent.id));
+    const peers = peerAgents.map((agent) => {
         const assignments = getAgentRoles(db, agent.id);
         const roleNames = assignments.map((a) => a.name);
+        const persona = personasByAgentId.get(agent.id);
         return {
           // Reshape per EP-022 / WA-098: drop the workspace-decoupling
           // identity-row internals (`path`, `git_root`, `repo_id`,
@@ -4756,6 +4764,7 @@ async function handleAgentApi(state: DaemonState, ws: WorkspaceState, action: st
           roles: roleNames,
           isMain: agent.id === mainRole?.id,
           active: Boolean(runnerByDisplayIdLR.get(agent.display_id ?? "")?.reachable),
+          persona: details ? personaForPeers(persona) : (persona?.description ? { description: persona.description } : null),
           ...(details ? (() => {
             const runner = runnerByDisplayIdLR.get(agent.display_id ?? "");
             const session = sessionByRoleId.get(agent.id);

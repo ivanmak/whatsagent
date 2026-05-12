@@ -105,7 +105,7 @@ export async function createWhatsAgentOpenCodeHooks(env: Record<string, string |
         },
       }),
       list_peers: tool({
-        description: "List other WhatsAgent agents in this workspace — `displayId`, `repo`, `name`, `roles[]` (RBAC role-name assignments per peer), `isMain`, `active`. Caller is excluded; use `whoami` for self-introspection.",
+        description: "List other WhatsAgent agents in this workspace — `displayId`, `repo`, `name`, `roles[]` (RBAC role-name assignments per peer), `persona` description (or fuller persona with details), `isMain`, `active`. Caller is excluded; use `whoami` for self-introspection.",
         args: {
           details: tool.schema.boolean().optional().describe("Include safe runtime, summary, and attention metadata."),
         },

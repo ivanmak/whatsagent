@@ -672,6 +672,7 @@ export const WEB_SHELL_OVERRIDES = String.raw`
     .kanban-detail-grid div { padding: 9px 10px; border: 1px solid var(--border-soft); border-radius: 10px; background: var(--surface-soft); }
     .kanban-detail-grid span { display: block; color: var(--muted); font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .05em; }
     .kanban-detail-grid strong { display: block; margin-top: 3px; color: var(--text-strong); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .kanban-detail-grid .kanban-detail-persona { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; font-weight: 600; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; letter-spacing: 0; }
     .kanban-github { display: block; color: var(--accent-dark); font-size: 12px; font-weight: 800; text-decoration: underline; text-underline-offset: 2px; }
     .kanban-detail section { padding-top: 14px; border-top: 1px solid var(--border-soft); }
     .kanban-detail h3 { margin: 0 0 8px; color: var(--text-strong); font-size: 13px; }
@@ -733,6 +734,7 @@ export const WEB_SHELL_OVERRIDES = String.raw`
     .kanban-lane-agent .kanban-lane-agent-label { display: flex; flex-direction: column; min-width: 0; gap: 0; line-height: 1.15; }
     .kanban-lane-agent .kanban-lane-agent-repo { color: var(--muted); font-size: 10px; font-weight: 600; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .kanban-lane-agent .kanban-lane-agent-name { display: block; color: var(--text-strong); font-size: 12.5px; font-weight: 800; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .kanban-lane-agent .kanban-lane-agent-desc { display: block; max-width: 150px; color: var(--muted); font-size: 10px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .kanban-lane-agent .kanban-lane-agent-count { display: block; margin-top: 1px; color: var(--muted); font-size: 10px; }
     .kanban-progress { height: 3px; max-width: 132px; overflow: hidden; border-radius: 999px; background: var(--border-soft); }
     .kanban-progress span { display: block; height: 100%; border-radius: inherit; background: var(--green); }

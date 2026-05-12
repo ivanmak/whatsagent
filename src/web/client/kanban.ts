@@ -897,11 +897,19 @@ function kanbanLaneName(assignedRoleName) {
   return role ? roleDisplayName(role) : name;
 }
 
+function rolePersonaDescription(role) {
+  return String(role?.persona?.description || '').trim();
+}
+
 function laneAgentHtml(role, laneName) {
   const repoName = laneRepoName(role);
   const roleName = role?.name || laneName;
-  if (!repoName) return '<strong class="kanban-lane-agent-name">' + esc(roleName) + '</strong>';
-  return '<span class="kanban-lane-agent-label"><span class="kanban-lane-agent-repo">' + esc(repoName) + '</span><strong class="kanban-lane-agent-name">' + esc(roleName) + '</strong></span>';
+  const description = rolePersonaDescription(role);
+  const descriptionHtml = description ? '<span class="kanban-lane-agent-desc" ' + truncatedAttrs(description) + '>' + esc(description) + '</span>' : '';
+  const label = !repoName
+    ? '<strong class="kanban-lane-agent-name">' + esc(roleName) + '</strong>'
+    : '<span class="kanban-lane-agent-label"><span class="kanban-lane-agent-repo">' + esc(repoName) + '</span><strong class="kanban-lane-agent-name">' + esc(roleName) + '</strong></span>';
+  return label + descriptionHtml;
 }
 
 function renderKanbanLane(lane) {
@@ -976,9 +984,12 @@ function renderKanbanDetail() {
   const task = kanbanDetail?.task || kanbanTasks.find(item => item.display_id === kanbanSelectedTaskId);
   if (!task) return shell('', '<div class="thread-empty">Task not found.</div>');
   const head = '<div><p class="kanban-kicker">' + esc(task.display_id) + '</p><h2>' + esc(task.title || '') + '</h2></div>';
+  const assignedRole = roleByName(task.assigned_role_name || '');
+  const assignedPersonaDescription = rolePersonaDescription(assignedRole);
+  const assignedHtml = '<strong ' + truncatedAttrs(task.assigned_role_name || '') + '>' + esc(task.assigned_role_name || '') + '</strong>' + (assignedPersonaDescription ? '<small class="kanban-detail-persona" ' + truncatedAttrs(assignedPersonaDescription) + '>' + esc(assignedPersonaDescription) + '</small>' : '');
   const body =
     '<div class="kanban-detail-badges"><span class="kanban-pill status">' + esc(task.status || '') + '</span>' + renderPriorityPill(task.priority, '') + renderEffortPill(task.effort) + '</div>' +
-    '<div class="kanban-detail-grid"><div><span>Assigned</span><strong ' + truncatedAttrs(task.assigned_role_name || '') + '>' + esc(task.assigned_role_name || '') + '</strong></div><div><span>Created by</span><strong ' + truncatedAttrs(task.created_by_role_name || '') + '>' + esc(task.created_by_role_name || '') + '</strong></div><div><span>Updated</span><strong ' + truncatedAttrs(formatMessageTime(task.updated_at || task.created_at)) + '>' + esc(formatMessageTime(task.updated_at || task.created_at)) + '</strong></div></div>' +
+    '<div class="kanban-detail-grid"><div><span>Assigned</span>' + assignedHtml + '</div><div><span>Created by</span><strong ' + truncatedAttrs(task.created_by_role_name || '') + '>' + esc(task.created_by_role_name || '') + '</strong></div><div><span>Updated</span><strong ' + truncatedAttrs(formatMessageTime(task.updated_at || task.created_at)) + '>' + esc(formatMessageTime(task.updated_at || task.created_at)) + '</strong></div></div>' +
     (task.github_url ? (/^https?:\/\//i.test(task.github_url)
       ? '<a class="kanban-github" href="' + esc(task.github_url) + '" target="_blank" rel="noopener noreferrer">' + esc(task.github_title || ('GitHub #' + (task.github_number || ''))) + '</a>'
       : '<span class="kanban-github">' + esc(task.github_title || task.github_url) + '</span>') : '') +
