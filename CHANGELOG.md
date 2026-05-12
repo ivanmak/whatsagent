@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-05-12
+
+Per-agent Persona Profiles (EP-037, Epic A).
+
+### Added
+
+- **Persona profile per agent.** New `agent_personas` table (schema migration 25) holding six freeform fields — `description`, `responsibilities`, `boundaries`, `skills`, `working_style`, `extra_prompt` — with soft size limits (warned, not enforced) and hard caps per field and per total. An empty persona deletes the row; the row cascades on agent deletion.
+- **Persona in agent discovery.** `whoami` returns the full persona (including `extra_prompt`); `list_peers` returns the persona `description` by default and the fuller persona (without `extra_prompt`) when called with `details: true`, so agents can pick a peer by capability instead of by name.
+- **Persona-aware HTTP APIs.** `GET /api/v1/workspaces/current/roles-by-id` and the new `GET /api/v1/workspaces/current/roles-by-id/:id` include `persona`; `POST` (create) and `PATCH` (edit) accept a `persona` object (or `null` to clear) and return any soft-limit `warnings`. New `GET /api/v1/persona-templates`.
+- **Six starter persona templates** — Engineer, Reviewer, Architect, Researcher, Coordinator, Frontend Specialist (wording adapted from the MIT-licensed agency-agents project) — selectable from a dropdown that fills only empty fields and toasts how many it touched.
+- **Agent config & create pages.** Adding or editing an agent is now a dedicated page (`/agents/new`, `/agents/<repo:name>/settings`) instead of a modal, with Identity, Access (RBAC roles), and Persona sections. The Persona editor shows per-field "long field" markers, a total-token-budget banner, and a `Clear persona` action behind a confirm dialog.
+
+### Changed
+
+- **Agents overview redesigned** as a repo-grouped table — avatar, name + runtime, RBAC role chips, persona description, current summary, and row actions — replacing the card grid; rows are clickable to open the config page.
+- **Kanban shows persona context** — the assignee's persona `description` appears on board lanes and on the task-detail "Assigned" field.
+- Runtime-default labels reworded from "Daemon default" to "Global default".
+
+### Notes
+
+- Persona text is stored and surfaced but not yet injected into agent launch prompts; the token-budget banner reflects the planned injection (Epic B).
+
 ## [0.1.1] - 2026-05-12
 
 Web UI polish (EP-036).

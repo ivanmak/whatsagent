@@ -1042,7 +1042,7 @@ test("renderWebShell emits parseable dashboard JavaScript", () => {
   expect(settingsSource).toContain("function aboutPanel()");
   expect(settingsSource).toContain("about-hero");
   expect(settingsSource).toContain("Messaging and task tracking for coding agents.");
-  expect(renderedScript).toContain('"appVersion":"0.1.1"');
+  expect(renderedScript).toContain('"appVersion":"0.2.0"');
   expect(renderedScript).toContain('"appBuild":"');
   expect(settingsSource).toContain("const settingsTabAliases = { fleet: 'runtime', runners: 'diagnostics', 'chat-history': 'messaging', 'agent-text': 'prompts', workspaces: 'preferences' }");
   expect(settingsSource).not.toContain("kanban: 'preferences'");
