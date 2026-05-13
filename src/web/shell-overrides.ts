@@ -337,17 +337,17 @@ export const WEB_SHELL_OVERRIDES = String.raw`
     .auth-session-agent { color: var(--text-strong); font-weight: 750; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .auth-session-last-seen { color: var(--muted); font-size: 12px; }
     .about-card { padding: 0; overflow: hidden; }
-    .about-hero { position: relative; min-height: 340px; display: flex; align-items: center; overflow: hidden; border-bottom: 1px solid var(--border); background: var(--surface-soft); }
-    [data-theme="dark"] .about-hero { background: #080e18; }
-    @media (prefers-color-scheme: dark) { :root[data-theme="auto"] .about-hero { background: #080e18; } }
+    .about-hero { position: relative; min-height: 340px; display: flex; align-items: center; overflow: hidden; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--accent) 6%, var(--surface-soft)); }
+    [data-theme="dark"] .about-hero { background: color-mix(in srgb, var(--accent) 10%, #080e18); }
+    @media (prefers-color-scheme: dark) { :root[data-theme="auto"] .about-hero { background: color-mix(in srgb, var(--accent) 10%, #080e18); } }
     .about-network { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
-    .about-network-edge { stroke: oklch(60% 0.18 240 / 0.22); stroke-width: 1.5; }
-    .about-network-dot { fill: oklch(60% 0.18 240 / 0.38); }
-    [data-theme="dark"] .about-network-edge { stroke: oklch(70% 0.07 250 / 0.08); stroke-width: 1; }
-    [data-theme="dark"] .about-network-dot { fill: oklch(70% 0.07 250 / 0.16); }
+    .about-network-edge { stroke: color-mix(in srgb, var(--accent) 28%, transparent); stroke-width: 1.5; }
+    .about-network-dot { fill: color-mix(in srgb, var(--accent) 44%, transparent); }
+    [data-theme="dark"] .about-network-edge { stroke: color-mix(in srgb, var(--accent) 16%, transparent); stroke-width: 1; }
+    [data-theme="dark"] .about-network-dot { fill: color-mix(in srgb, var(--accent) 28%, transparent); }
     @media (prefers-color-scheme: dark) {
-      :root[data-theme="auto"] .about-network-edge { stroke: oklch(70% 0.07 250 / 0.08); stroke-width: 1; }
-      :root[data-theme="auto"] .about-network-dot { fill: oklch(70% 0.07 250 / 0.16); }
+      :root[data-theme="auto"] .about-network-edge { stroke: color-mix(in srgb, var(--accent) 16%, transparent); stroke-width: 1; }
+      :root[data-theme="auto"] .about-network-dot { fill: color-mix(in srgb, var(--accent) 28%, transparent); }
     }
     .about-hero-overlays {
       position: absolute; inset: 0; z-index: 2; pointer-events: none;

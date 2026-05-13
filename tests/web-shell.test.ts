@@ -2207,7 +2207,14 @@ test("EP-015 WA-059: Settings About uses identity card", () => {
   expect(settingsSource).not.toContain("ABOUT_ICON_NODES");
   expect(settingsSource).not.toContain("/assets/icons/whatsagent-indigo-128.png");
   expect(shellOverridesSource).toContain(".about-hero { position: relative;");
+  expect(shellOverridesSource).toContain("background: color-mix(in srgb, var(--accent) 6%, var(--surface-soft));");
+  expect(shellOverridesSource).toContain("[data-theme=\"dark\"] .about-hero { background: color-mix(in srgb, var(--accent) 10%, #080e18); }");
   expect(shellOverridesSource).toContain(".about-network { position: absolute;");
+  expect(shellOverridesSource).toContain(".about-network-edge { stroke: color-mix(in srgb, var(--accent) 28%, transparent);");
+  expect(shellOverridesSource).toContain(".about-network-dot { fill: color-mix(in srgb, var(--accent) 44%, transparent);");
+  expect(shellOverridesSource).toContain(":root[data-theme=\"auto\"] .about-network-edge { stroke: color-mix(in srgb, var(--accent) 16%, transparent);");
+  expect(shellOverridesSource).not.toContain("about-network-edge { stroke: oklch");
+  expect(shellOverridesSource).not.toContain("about-network-dot { fill: oklch");
   expect(shellOverridesSource).toContain(".about-wordmark");
   expect(shellOverridesSource).toContain("@media (max-width: 720px)");
 });
