@@ -33,6 +33,7 @@ function settingsWorkspaceSubtitle(scope) { return ctx().settingsWorkspaceSubtit
 function settingsDropdown(name, value, options, opts) { return ctx().settingsDropdown(name, value, options, opts); }
 function openConfirm(opts) { return ctx().openConfirm(opts); }
 function esc(value) { return ctx().esc(value); }
+function renderSafeMarkdown(value) { return ctx().renderSafeMarkdown(value); }
 function mobileSidebarTab() { return ctx().mobileSidebarTab ? ctx().mobileSidebarTab() : ''; }
 
 export const settingsTabOrder = ['preferences', 'notifications', 'messaging', 'runtime', 'prompts', 'roles', 'user', 'diagnostics', 'about'];

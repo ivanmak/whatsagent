@@ -2232,6 +2232,7 @@ test("EP-015 WA-059: Settings About uses identity card", () => {
   expect(settingsSource).toContain("class=\"about-changelog-entry\"' + (index === 0 ? ' open' : '')");
   expect(settingsSource).toContain("String(entry?.bodyMarkdown || '').trim()");
   expect(settingsSource).toContain("const label = title ? version + ' — ' + title : version;");
+  expect(settingsSource).toContain("function renderSafeMarkdown(value) { return ctx().renderSafeMarkdown(value); }");
   expect(settingsSource).toContain("renderSafeMarkdown(body)");
   expect(settingsSource).toContain("View full history →");
   expect(settingsSource).toContain("/assets/icons/whatsagent-' + accent + '-256.png");
