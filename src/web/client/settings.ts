@@ -1276,20 +1276,20 @@ function aboutAppIconImg(): string {
 function aboutChangelogSection() {
   const entries = Array.isArray(getState().changelog) ? getState().changelog : [];
   if (entries.length === 0) return '';
-  const rows = entries.map((entry, index) => {
+  const rows = entries.map((entry) => {
     const version = String(entry?.version || '').trim();
     const title = String(entry?.title || '').trim();
     const body = String(entry?.bodyMarkdown || '').trim();
     if (!version) return '';
     const label = title ? version + ' — ' + title : version;
-    return '<details class="about-changelog-entry"' + (index === 0 ? ' open' : '') + '>' +
+    return '<details class="about-changelog-entry">' +
       '<summary class="about-changelog-summary"><span class="about-changelog-chevron" aria-hidden="true">▶</span><span class="about-changelog-title">' + esc(label) + '</span></summary>' +
       '<div class="about-changelog-body markdown-body">' + renderSafeMarkdown(body) + '</div>' +
     '</details>';
   }).join('');
   if (!rows) return '';
   return '<div class="about-changelog">' +
-    '<div class="about-changelog-head"><h3 class="about-changelog-heading">What\'s new</h3><a href="https://github.com/ivanmak/whatsagent/blob/master/CHANGELOG.md" target="_blank" rel="noopener noreferrer">View full history →</a></div>' +
+    '<div class="about-changelog-head"><h3 class="about-changelog-heading">What\'s new</h3></div>' +
     rows +
   '</div>';
 }

@@ -405,8 +405,6 @@ export const WEB_SHELL_OVERRIDES = String.raw`
     .about-changelog { margin: 0 32px 28px; border: 1px solid var(--border-soft); border-radius: 14px; background: color-mix(in srgb, var(--surface) 82%, var(--accent) 4%); overflow: hidden; }
     .about-changelog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--border-soft); }
     .about-changelog-heading { margin: 0; color: var(--text-strong); font-size: 13px; font-weight: 900; letter-spacing: -0.01em; }
-    .about-changelog-head a { color: var(--accent); font-size: 12px; font-weight: 800; text-decoration: none; white-space: nowrap; }
-    .about-changelog-head a:hover { text-decoration: underline; }
     .about-changelog-entry { border-top: 1px solid var(--border-soft); }
     .about-changelog-entry:first-of-type { border-top: 0; }
     .about-changelog-summary { display: flex; align-items: center; gap: 8px; padding: 13px 18px; cursor: pointer; color: var(--text-strong); font-size: 13px; font-weight: 800; list-style: none; }
