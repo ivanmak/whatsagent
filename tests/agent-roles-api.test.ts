@@ -11,6 +11,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { AUTH_COOKIE_NAME, CSRF_HEADER_NAME } from "../src/auth-session.ts";
 import { setCurrentWorkspaceId, getWorkspace } from "../src/daemon-db.ts";
 import { createWorkspace } from "../src/config.ts";
 import { startDaemon, type StartedDaemon } from "../src/server/daemon.ts";
@@ -49,6 +50,7 @@ afterEach(async () => {
 interface SeedHandle {
   wsId: string;
   base: string;
+  repoId: string;
   agentId: string;
   roleIdByName: Map<string, string>;
 }
@@ -81,6 +83,7 @@ async function startWithSeededAgent(): Promise<SeedHandle> {
   return {
     wsId: row.id,
     base: `${daemon!.url}/api/v1/workspaces/${row.id}`,
+    repoId: "repo-1",
     agentId: "agent-1",
     roleIdByName,
   };
@@ -92,6 +95,72 @@ interface AgentRolesBody {
   error?: string;
   roles?: Array<{ role_id: string; name: string; is_builtin: number; assigned_at: string }>;
 }
+
+interface RoleCrudBody {
+  ok: boolean;
+  error?: string;
+  roles?: Array<{ id: string; repoId: string; name: string; persona: Record<string, string> | null }>;
+}
+
+function rolePersistenceSnapshot(h: SeedHandle): { agents: unknown[]; personas: unknown[] } {
+  const ws = daemon!.state.workspaces.get(h.wsId)!;
+  return {
+    agents: ws.db.query<{ id: string; repo_id: string; name: string }, []>("SELECT id, repo_id, name FROM agents ORDER BY id").all(),
+    personas: ws.db.query<{ agent_id: string }, []>("SELECT agent_id FROM agent_personas ORDER BY agent_id").all(),
+  };
+}
+
+describe("persona-bearing role CRUD guards (WA-225)", () => {
+  test("POST /roles-by-id rolls back an over-hard-cap persona create", async () => {
+    const h = await startWithSeededAgent();
+    const before = rolePersistenceSnapshot(h);
+    const beforeList = await fetch(`${h.base}/roles-by-id`).then((r) => r.json()) as RoleCrudBody;
+
+    const res = await fetch(`${h.base}/roles-by-id`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repoId: h.repoId, name: "bad-persona-agent", persona: { extra_prompt: "y".repeat(32_001) } }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json() as RoleCrudBody;
+    expect(body.error).toContain("extra_prompt");
+    expect(body.error).toContain("32000");
+
+    expect(rolePersistenceSnapshot(h)).toEqual(before);
+    const afterList = await fetch(`${h.base}/roles-by-id`).then((r) => r.json()) as RoleCrudBody;
+    expect(afterList.roles).toEqual(beforeList.roles);
+    expect(afterList.roles?.some((role) => role.name === "bad-persona-agent")).toBe(false);
+  });
+
+  test("persona create and patch reject missing auth, bad CSRF, and wrong Origin", async () => {
+    const h = await startWithSeededAgent();
+    const createUrl = `${h.base}/roles-by-id`;
+    const patchUrl = `${h.base}/roles-by-id/${encodeURIComponent(h.agentId)}`;
+    const badOrigin = new URL(daemon!.url);
+    badOrigin.port = String(Number(badOrigin.port) + 1);
+    const writes = [
+      { method: "POST", url: createUrl, body: JSON.stringify({ repoId: h.repoId, name: "persona-create", persona: { description: "create persona" } }) },
+      { method: "PATCH", url: patchUrl, body: JSON.stringify({ persona: { description: "patch persona" } }) },
+    ];
+
+    for (const write of writes) {
+      const unauth = await nativeFetch(write.url, { method: write.method, headers: { "Content-Type": "application/json" }, body: write.body });
+      expect([401, 403]).toContain(unauth.status);
+
+      const invalidCookie = await nativeFetch(write.url, { method: write.method, headers: { Cookie: `${AUTH_COOKIE_NAME}=bogus`, "Content-Type": "application/json" }, body: write.body });
+      expect([401, 403]).toContain(invalidCookie.status);
+
+      const missingCsrf = await nativeFetch(write.url, { method: write.method, headers: { Cookie: authCookie, "Content-Type": "application/json" }, body: write.body });
+      expect(missingCsrf.status).toBe(403);
+
+      const badCsrf = await nativeFetch(write.url, { method: write.method, headers: authedFetchHeaders({ "Content-Type": "application/json", [CSRF_HEADER_NAME]: "bad-token" }, authCookie, write.method), body: write.body });
+      expect(badCsrf.status).toBe(403);
+
+      const badOriginRes = await nativeFetch(write.url, { method: write.method, headers: authedFetchHeaders({ "Content-Type": "application/json", Origin: badOrigin.origin }, authCookie, write.method), body: write.body });
+      expect(badOriginRes.status).toBe(403);
+    }
+  });
+});
 
 describe("agent role-assignment HTTP endpoints (Phase 3 slice 2)", () => {
   describe("GET /agents/:id/roles", () => {
