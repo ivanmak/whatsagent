@@ -3867,14 +3867,16 @@ export function getMessageById(db: Database, id: number): MessageRow | null {
   return db.query<MessageRow, [number]>(messageSelectSql("WHERE messages.id = ?")).get(id) ?? null;
 }
 
-export function listMessages(db: Database, opts: { roleId?: string; limit?: number } = {}): MessageRow[] {
+export function listMessages(db: Database, opts: { roleId?: string; limit?: number; latest?: boolean } = {}): MessageRow[] {
   const limit = Math.max(1, Math.min(500, Math.floor(opts.limit ?? 100)));
-  if (opts.roleId) {
-    return db.query<MessageRow, [string, string, number]>(messageSelectSql(
-      "WHERE messages.from_role_id = ? OR messages.to_role_id = ? ORDER BY messages.id ASC LIMIT ?",
-    )).all(opts.roleId, opts.roleId, limit);
-  }
-  return db.query<MessageRow, [number]>(messageSelectSql("ORDER BY messages.id ASC LIMIT ?")).all(limit);
+  const latest = opts.latest ?? true;
+  const order = latest ? "ORDER BY messages.id DESC" : "ORDER BY messages.id ASC";
+  const rows = opts.roleId
+    ? db.query<MessageRow, [string, string, number]>(messageSelectSql(
+      `WHERE messages.from_role_id = ? OR messages.to_role_id = ? ${order} LIMIT ?`,
+    )).all(opts.roleId, opts.roleId, limit)
+    : db.query<MessageRow, [number]>(messageSelectSql(`${order} LIMIT ?`)).all(limit);
+  return latest ? rows.reverse() : rows;
 }
 
 export function deliverPendingMessages(db: Database, roleId: string, sessionId: string, limit = 50): MessageRow[] {
