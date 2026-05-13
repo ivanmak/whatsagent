@@ -391,6 +391,17 @@ function tryParseIntegerArray(value: unknown, opts: IntegerParseOptions): number
   }
 }
 
+function tryParseCsvIntegerIds(value: unknown, opts: IntegerParseOptions & { maxItems: number }): number[] | Response {
+  if (value === undefined || value === null || value === "") return [];
+  try {
+    const parts = String(value).split(",").map((part) => part.trim()).filter(Boolean);
+    if (parts.length > opts.maxItems) throw new Error(`rootIds exceeds maximum ${opts.maxItems}`);
+    return Array.from(new Set(parts.map((part) => parseInteger(part, opts))));
+  } catch (e) {
+    return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 400 });
+  }
+}
+
 const XTERM_JS_PATH = fileURLToPath(new URL("../../node_modules/@xterm/xterm/lib/xterm.js", import.meta.url));
 const XTERM_CSS_PATH = fileURLToPath(new URL("../../node_modules/@xterm/xterm/css/xterm.css", import.meta.url));
 const XTERM_FIT_JS_PATH = fileURLToPath(new URL("../../node_modules/@xterm/addon-fit/lib/addon-fit.js", import.meta.url));
@@ -3799,8 +3810,10 @@ async function listFleetChannelMessages(state: DaemonState, ws: WorkspaceState, 
   if (rootBeforeId instanceof Response) return rootBeforeId;
   const rootSinceId = tryParseInteger(url.searchParams.get("rootSinceId"), { min: 0, default: 0 });
   if (rootSinceId instanceof Response) return rootSinceId;
+  const includeRootIds = tryParseCsvIntegerIds(url.searchParams.get("rootIds"), { min: 1, maxItems: 50 });
+  if (includeRootIds instanceof Response) return includeRootIds;
   const db = ws.db;
-  const page = listChannelHistory(db, { rootLimit, rootBeforeId, rootSinceId });
+  const page = listChannelHistory(db, { rootLimit, rootBeforeId, rootSinceId, includeRootIds });
   return json({ ok: true, messages: page.messages, page: { rootIds: page.rootIds, rootCount: page.rootCount, oldestRootId: page.oldestRootId, newestRootId: page.newestRootId, hasMoreOlder: page.hasMoreOlder } });
 }
 

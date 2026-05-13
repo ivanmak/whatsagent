@@ -1521,6 +1521,11 @@ test("web channel history endpoint paginates by roots", async () => {
       const olderRoots = new Set(older.messages.filter((message) => message.parent_message_id === null).map((message) => message.id));
       expect(older.messages.every((message) => message.parent_message_id === null || olderRoots.has(message.root_message_id!))).toBe(true);
 
+      const included = await fetch(`${daemon.url}${wsBase}/channel/messages?rootLimit=1&rootIds=${root1.id}`).then((r) => r.json()) as { page: { rootIds: number[]; rootCount: number }; messages: Array<{ id: number; body: string }> };
+      expect(included.page).toMatchObject({ rootIds: [root3.id], rootCount: 1 });
+      expect(included.messages.map((message) => message.body)).toEqual(["root-1", "reply-1", "root-3"]);
+      expect(new Set(included.messages.map((message) => message.id)).size).toBe(included.messages.length);
+
       const hotRoot = postChannelMessage(ws.db, { fromRoleId: role.id, fromSessionId: null, body: "hot root" });
       for (let i = 1; i <= 500; i += 1) {
         postChannelMessage(ws.db, { fromRoleId: role.id, fromSessionId: null, parentMessageId: hotRoot.id, body: `hot reply ${i}` });

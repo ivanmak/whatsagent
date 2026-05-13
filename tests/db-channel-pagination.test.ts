@@ -73,6 +73,31 @@ describe("listChannelMessagesByRoots", () => {
     }
   });
 
+  test("includeRootIds hydrates explicit older roots alongside latest roots without dupes", async () => {
+    const ws = await setup();
+    try {
+      const main = ws.repos[0]!.roles[0]!;
+      const agent = ws.repos[1]!.roles[0]!;
+      const root1 = postChannelMessage(ws.workspaceDb, { fromRoleId: main.id, fromSessionId: null, body: "root-1" });
+      postChannelMessage(ws.workspaceDb, { fromRoleId: agent.id, fromSessionId: null, parentMessageId: root1.id, body: "reply-1" });
+      const root2 = postChannelMessage(ws.workspaceDb, { fromRoleId: main.id, fromSessionId: null, body: "root-2" });
+      const roots = [root1, root2];
+      for (let i = 3; i <= 7; i += 1) {
+        roots.push(postChannelMessage(ws.workspaceDb, { fromRoleId: main.id, fromSessionId: null, body: `root-${i}` }));
+      }
+      ws.workspaceDb.run("INSERT INTO channels (id, name, created_at) VALUES (?, ?, ?)", ["other-channel", "Other", new Date().toISOString()]);
+      const foreignRoot = postChannelMessage(ws.workspaceDb, { channelId: "other-channel", fromRoleId: main.id, fromSessionId: null, body: "foreign-root" });
+
+      const rows = listChannelMessagesByRoots(ws.workspaceDb, { rootLimit: 5, includeRootIds: [root1.id, roots[6]!.id, foreignRoot.id, root1.id] });
+      expect(rows.map((row) => row.body)).toEqual(["root-1", "reply-1", "root-3", "root-4", "root-5", "root-6", "root-7"]);
+      expect(new Set(rows.map((row) => row.id)).size).toBe(rows.length);
+      expect(rows.some((row) => row.id === root2.id)).toBe(false);
+      expect(rows.every((row) => row.channel_id !== "other-channel")).toBe(true);
+    } finally {
+      ws.workspaceDb.close();
+    }
+  });
+
   test("rootBeforeId returns the next older root page", async () => {
     const ws = await setup();
     try {

@@ -163,6 +163,7 @@ async function sendWebBroadcast() {
 // ---------- Channel (was installChannelMessagesUi) ----------
 
 const CHANNEL_HISTORY_ROOT_PAGE_SIZE = 20;
+const CHANNEL_REFRESH_ROOT_IDS_LIMIT = 50;
 let channelMessages = [];
 let channelSnapshot = '';
 let channelMessagesLoaded = false;
@@ -305,6 +306,14 @@ function minChannelRootId(items) {
   }, Number.POSITIVE_INFINITY);
   return Number.isFinite(min) ? min : 0;
 }
+function channelRefreshRootIds() {
+  const activeRootId = normalizeChannelMessageId(activeChannelThreadRootId);
+  const loaded = channelRootMessagesFrom(channelMessages).map(message => normalizeChannelMessageId(message.id)).filter(Boolean);
+  const withoutActive = activeRootId ? loaded.filter(id => id !== activeRootId) : loaded;
+  const keep = withoutActive.slice(-(activeRootId ? CHANNEL_REFRESH_ROOT_IDS_LIMIT - 1 : CHANNEL_REFRESH_ROOT_IDS_LIMIT));
+  if (activeRootId) keep.push(activeRootId);
+  return Array.from(new Set(keep)).slice(-CHANNEL_REFRESH_ROOT_IDS_LIMIT);
+}
 
 function incomingChannelMessageCount(items) {
   return (items || []).filter(message => message.from_role_name).length;
@@ -362,7 +371,8 @@ async function loadChannelMessages(opts = {}) {
   let shouldRender = Boolean(opts.rerender);
   let stale = false;
   try {
-    const suffix = '/channel/messages?rootLimit=' + CHANNEL_HISTORY_ROOT_PAGE_SIZE + (beforeId ? '&rootBeforeId=' + encodeURIComponent(String(beforeId)) : '');
+    const includeRootIds = beforeId ? [] : channelRefreshRootIds();
+    const suffix = '/channel/messages?rootLimit=' + CHANNEL_HISTORY_ROOT_PAGE_SIZE + (beforeId ? '&rootBeforeId=' + encodeURIComponent(String(beforeId)) : '') + (includeRootIds.length ? '&rootIds=' + encodeURIComponent(includeRootIds.join(',')) : '');
     const res = await workspaceFetch(suffix);
     const body = await res.json().catch(() => ({}));
     if (gen !== getState().workspaceGeneration) { stale = true; return false; }
@@ -376,7 +386,7 @@ async function loadChannelMessages(opts = {}) {
       const fetchedRootCount = channelRootMessagesFrom(fetched).length;
       channelOlderExhausted = page.hasMoreOlder === false || fetchedRootCount < CHANNEL_HISTORY_ROOT_PAGE_SIZE;
     } else {
-      const minLatestRootId = minChannelRootId(fetched);
+      const minLatestRootId = normalizeChannelMessageId(page.oldestRootId) || minChannelRootId(fetched);
       const olderLoaded = minLatestRootId > 0 ? channelMessages.filter(message => (channelMessageRootId(message) || 0) < minLatestRootId) : [];
       next = channelMessagesLoaded ? channelMessagesById(olderLoaded, fetched) : fetched;
       channelOlderExhausted = page.hasMoreOlder === false;

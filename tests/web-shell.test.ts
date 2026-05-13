@@ -457,7 +457,11 @@ test("renderWebShell emits parseable dashboard JavaScript", () => {
   expect(kanbanSource).toContain("export function resetKanban()");
   expect(kanbanSource).toContain("kanbanTasks = [];");
   expect(messagesSource).toContain("const CHANNEL_HISTORY_ROOT_PAGE_SIZE = 20;");
+  expect(messagesSource).toContain("const CHANNEL_REFRESH_ROOT_IDS_LIMIT = 50;");
+  expect(messagesSource).toContain("function channelRefreshRootIds()");
   expect(messagesSource).toContain("const suffix = '/channel/messages?rootLimit=' + CHANNEL_HISTORY_ROOT_PAGE_SIZE");
+  expect(messagesSource).toContain("'&rootIds=' + encodeURIComponent(includeRootIds.join(','))");
+  expect(messagesSource).toContain("const minLatestRootId = normalizeChannelMessageId(page.oldestRootId) || minChannelRootId(fetched);");
   expect(messagesSource).toContain("void loadChannelMessages({ beforeId, rerender: true, silent: true, scrollMode: 'preserve' });");
   expect(messagesSource).toContain("const res = await workspaceFetch('/channel/messages', { method: 'POST'");
   expect(kanbanSource).toContain("const res = await workspaceFetch('/kanban/tasks?' + params.toString());");
@@ -653,6 +657,8 @@ test("renderWebShell emits parseable dashboard JavaScript", () => {
   expect(messagesSource).toContain("function sendWebChannelThreadMessage");
   expect(messagesSource).toContain("body: JSON.stringify({ body })");
   expect(messagesSource).toContain("body: JSON.stringify({ body, parentMessageId: parentId })");
+  expect(messagesSource).toContain("activeChannelThreadRootId = channelMessageRootId(payload.message) || parentId;");
+  expect(messagesSource).toContain("await callLoadMessages({ rerender: false });");
   expect(messagesSource).toContain("setTimeout(() => $('channelThreadCompose')?.focus(), 0)");
   // Post-channel-thread rewrite tombstones: keep replies/thread UI on the
   // sidebar row model, not the old drawer/pill/bubble markup.

@@ -2377,6 +2377,7 @@ interface ChannelRootPageInput {
   rootBeforeId?: number;
   beforeRootId?: number;
   rootSinceId?: number;
+  includeRootIds?: number[];
 }
 
 function channelHistoryRootLimit(opts: ChannelRootPageInput): number {
@@ -2411,6 +2412,13 @@ function selectChannelHistoryRoots(db: Database, channelId: string, opts: Channe
   };
 }
 
+function normalizeChannelHistoryRootIds(ids: unknown): number[] {
+  if (!Array.isArray(ids)) return [];
+  return Array.from(new Set(ids
+    .map((id) => channelHistoryCursor(id))
+    .filter((id) => id > 0)));
+}
+
 function hydrateChannelHistoryRoots(db: Database, channelId: string, rootIds: number[]): ChannelMessageRow[] {
   if (rootIds.length === 0) return [];
   const placeholders = rootIds.map(() => "?").join(", ");
@@ -2419,18 +2427,20 @@ function hydrateChannelHistoryRoots(db: Database, channelId: string, rootIds: nu
   ).all(channelId, ...rootIds, ...rootIds);
 }
 
-export function listChannelMessagesByRoots(db: Database, opts: { channelId?: string; rootLimit?: number; rootBeforeId?: number; rootSinceId?: number } = {}): ChannelMessageRow[] {
+export function listChannelMessagesByRoots(db: Database, opts: { channelId?: string; rootLimit?: number; rootBeforeId?: number; rootSinceId?: number; includeRootIds?: number[] } = {}): ChannelMessageRow[] {
   const channel = opts.channelId ? getChannelById(db, opts.channelId) : ensureDefaultChannel(db);
   if (!channel) return [];
   const { rootIds } = selectChannelHistoryRoots(db, channel.id, opts);
-  return hydrateChannelHistoryRoots(db, channel.id, rootIds);
+  const hydratedRootIds = Array.from(new Set([...rootIds, ...normalizeChannelHistoryRootIds(opts.includeRootIds)])).sort((a, b) => a - b);
+  return hydrateChannelHistoryRoots(db, channel.id, hydratedRootIds);
 }
 
 export function listChannelHistory(db: Database, opts: ChannelRootPageInput = {}): ChannelHistoryPage {
   const channel = opts.channelId ? getChannelById(db, opts.channelId) : ensureDefaultChannel(db);
   if (!channel) return { messages: [], rootIds: [], rootCount: 0, oldestRootId: null, newestRootId: null, hasMoreOlder: false };
   const { rootIds, hasMoreOlder } = selectChannelHistoryRoots(db, channel.id, opts);
-  const messages = hydrateChannelHistoryRoots(db, channel.id, rootIds);
+  const hydratedRootIds = Array.from(new Set([...rootIds, ...normalizeChannelHistoryRootIds(opts.includeRootIds)])).sort((a, b) => a - b);
+  const messages = hydrateChannelHistoryRoots(db, channel.id, hydratedRootIds);
   return {
     messages,
     rootIds,
