@@ -1206,8 +1206,10 @@ export const WEB_SHELL_OVERRIDES = String.raw`
     .agent-persona-tools-control .settings-dropdown { width: 240px; max-width: 100%; }
     .agent-persona-note { color: var(--muted); font-size: 11px; }
     .agent-persona-note.error { color: var(--red); }
-    .agent-persona-budget { margin: 0 0 12px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--amber) 42%, var(--border)); border-radius: 10px; background: color-mix(in srgb, var(--amber) 10%, var(--surface)); color: var(--text-strong); font-size: 12px; font-weight: 750; }
-    .agent-persona-budget.hidden, .agent-persona-field-warning.hidden { display: none; }
+    .agent-persona-budget { margin: 0 0 12px; padding: 8px 10px; border: 1px solid var(--border-soft); border-radius: 10px; background: var(--surface-soft); color: var(--muted); font-size: 12px; font-weight: 700; }
+    .agent-persona-budget [data-persona-token-count] { color: var(--text-strong); font-weight: 800; font-variant-numeric: tabular-nums; }
+    .agent-persona-budget.over-cap { border-color: color-mix(in srgb, var(--amber) 42%, var(--border)); background: color-mix(in srgb, var(--amber) 10%, var(--surface)); color: var(--text-strong); font-weight: 750; }
+    .agent-persona-field-warning.hidden { display: none; }
     .agent-persona-row { display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr); gap: 12px; align-items: start; padding: 9px 0; border-top: 1px solid var(--border-soft); }
     .agent-persona-row label { color: var(--text-strong); font-size: 12px; font-weight: 850; }
     .agent-persona-row label .hint { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; font-weight: 600; line-height: 1.3; }

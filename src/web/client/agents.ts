@@ -1287,10 +1287,10 @@ function personaSectionHtml(scope, persona) {
       : '<textarea ' + attrs + ' rows="' + rows + '">' + esc(value) + '</textarea>';
     return '<div class="agent-persona-row">' + labelHtml + '<div>' + control + '</div></div>';
   }).join('');
-  const budgetHidden = total > PERSONA_SOFT_TOTAL ? '' : ' hidden';
+  const overCap = total > PERSONA_SOFT_TOTAL;
   return '<section class="card settings-wide agent-config-section agent-config-persona"><div class="section-head"><div><h2>Persona</h2><p>What this agent is for — shown to peers in list_peers and the kanban assignee picker.</p></div><button type="button" class="btn secondary small" data-action="clear-agent-persona" data-persona-scope="' + esc(scope) + '">Clear persona</button></div>'
     + '<div class="agent-persona-tools"><span class="agent-persona-tools-label">Start from template</span><div class="agent-persona-tools-control">' + templateControl + templateStatus + '</div></div>'
-    + '<div class="agent-persona-budget' + budgetHidden + '" data-persona-budget-banner="' + esc(scope) + '">⚠ persona ≈ <span data-persona-token-count="' + esc(scope) + '">' + tokens + '</span> tokens — added to every agent launch once persona injection is enabled</div>'
+    + '<div class="agent-persona-budget' + (overCap ? ' over-cap' : '') + '" data-persona-budget-banner="' + esc(scope) + '">Persona ≈ <span data-persona-token-count="' + esc(scope) + '">' + tokens + '</span> tokens — counted in every launch once persona injection is enabled.</div>'
     + fields
   + '</section>';
 }
@@ -1323,7 +1323,7 @@ function updatePersonaWarnings(scope) {
     total += length;
     root.querySelector('[data-persona-warning-for="' + field + '"]')?.classList.toggle('hidden', !(cap && length > cap));
   });
-  root.querySelector('[data-persona-budget-banner="' + scope + '"]')?.classList.toggle('hidden', total <= PERSONA_SOFT_TOTAL);
+  root.querySelector('[data-persona-budget-banner="' + scope + '"]')?.classList.toggle('over-cap', total > PERSONA_SOFT_TOTAL);
   const tokens = root.querySelector('[data-persona-token-count="' + scope + '"]');
   if (tokens) tokens.textContent = String(Math.ceil(total / 4));
 }
