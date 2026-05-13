@@ -51,6 +51,12 @@ Per-agent Persona Profiles.
     ]);
   });
 
+  test("keeps non-version h2 headings as changelog entries", () => {
+    expect(parseChangelog("# Changelog\n\n## Notes\n\n### Added\n\n- Thing")).toEqual([
+      { version: "Notes", bodyMarkdown: "### Added\n\n- Thing" },
+    ]);
+  });
+
   test("returns an empty list when no version sections exist", () => {
     expect(parseChangelog("# Changelog\n\nNo releases yet.")).toEqual([]);
   });

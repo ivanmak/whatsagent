@@ -3,6 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { parseChangelog } from "../src/changelog.ts";
 import type { WhatsAgentConfig } from "../src/config.ts";
 import type { AgentRow } from "../src/db.ts";
 import { buildClientBundle } from "../src/web/client/build.ts";
@@ -100,6 +101,29 @@ test("renderSafeMarkdownHtml renders structure and escapes unsafe HTML", () => {
   expect(html).toContain("<ul><li>list item</li><li>another</li></ul>");
   expect(html).not.toContain("<script>");
   expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+});
+
+test("renderSafeMarkdownHtml renders ATX headings with escaped inline content", () => {
+  const html = renderSafeMarkdownHtml(
+    "### Added\n\n## Changed\n\n# Title with **bold**\n\n### <script>alert(1)</script>",
+    testEsc,
+  );
+
+  expect(html).toContain("<h3>Added</h3>");
+  expect(html).toContain("<h2>Changed</h2>");
+  expect(html).toContain("<h1>Title with <strong>bold</strong></h1>");
+  expect(html).not.toContain("<script>");
+  expect(html).toContain("<h3>&lt;script&gt;alert(1)&lt;/script&gt;</h3>");
+});
+
+test("real changelog subsection headings render as headings", () => {
+  const changelog = readFileSync(join(import.meta.dir, "..", "CHANGELOG.md"), "utf8");
+  const [latest] = parseChangelog(changelog);
+  expect(latest).toBeTruthy();
+  const html = renderSafeMarkdownHtml(latest!.bodyMarkdown, testEsc);
+
+  expect(html).toContain("<h3>Added</h3>");
+  expect(html).not.toContain("### Added");
 });
 
 test("web client main source contains de-escaped chunks and folded patches", async () => {

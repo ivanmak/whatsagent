@@ -1,6 +1,6 @@
 // @ts-nocheck
 // Shared tiny markdown renderer for trusted UI surfaces that still need HTML escaping.
-// Supports the existing message subset only: paragraphs, lists, fenced code,
+// Supports the existing message subset only: headings, paragraphs, lists, fenced code,
 // inline code, links, bold, and emphasis.
 export function renderSafeMarkdownHtml(value, esc) {
   const fence = String.fromCharCode(96).repeat(3);
@@ -49,6 +49,14 @@ export function renderSafeMarkdownHtml(value, esc) {
       if (listType && listType !== 'ol') flushList();
       listType = 'ol';
       listItems.push(numbered[1]);
+      continue;
+    }
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      flushParagraph();
+      flushList();
+      const level = heading[1].length;
+      out.push('<h' + level + '>' + renderMarkdownInline(heading[2], esc) + '</h' + level + '>');
       continue;
     }
     flushList();
