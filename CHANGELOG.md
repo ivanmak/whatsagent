@@ -11,40 +11,19 @@ Per-agent persona profiles.
 
 ### Added
 
-- **Persona profile per agent**
-  - Six freeform fields: `description`, `responsibilities`, `boundaries`, `skills`, `working_style`, `extra_prompt`.
-  - Soft size limits (warned, not enforced) plus hard caps per field and per total.
-  - Clearing all fields removes the persona; deleting an agent cascades.
-  - Surfaced in `whoami` (full persona including `extra_prompt`) and `list_peers` (description by default, fuller persona without `extra_prompt` when called with `details: true`), so agents can pick a peer by capability instead of by name.
-  - Editable through the HTTP API (`GET`/`POST`/`PATCH` of the agent record accept a `persona` object or `null` to clear, and return any soft-limit warnings).
-  - Visible in kanban — assignee description shows as a hover hint on the lane's agent name and avatar, and inline on the task-detail "Assigned" field.
-- **Six starter persona templates**
-  - Engineer, Reviewer, Architect, Researcher, Coordinator, Frontend Specialist (wording adapted from the MIT-licensed agency-agents project).
-  - Picker fills only empty fields and toasts how many it touched.
-- **Dedicated agent config and create pages**
-  - Replaces the previous modals; reachable at `/agents/new` and `/agents/<repo:name>/settings`.
-  - Identity, Access (RBAC roles), and Persona sections.
-  - Persona editor shows per-field "long field" markers, a total-token-budget banner, and a `Clear persona` action behind a confirm dialog.
+- **Persona profile per agent** — give each agent a short bio (description, responsibilities, boundaries, skills, working style, extra prompt) so peers can route work by capability instead of by name.
+  - Surfaced in `whoami` and `list_peers` for agents, and on the kanban lane and task-detail "Assigned" field for humans.
+- **Six starter persona templates** — Engineer, Reviewer, Architect, Researcher, Coordinator, Frontend Specialist — one click fills the editor.
+- **Dedicated agent add and edit pages** replacing the old modal, with a Persona section alongside Identity and Access.
 
 ### Changed
 
-- **Agents overview redesigned**
-  - Repo-grouped table with avatar, name + runtime, RBAC role chips, persona description, current summary, and row actions — replacing the card grid.
-  - Rows are clickable and open the config page.
-  - Name cell drops the runtime icon and online/offline pill (presence stays on the avatar dot).
-  - Roles column narrower (two chips per row); description and current-summary cells wrap, clamp to three lines, and expand inline on click (with a hover tooltip showing the full text).
-- **Agent config / create pages refinements**
-  - Agents tab bar kept on top, content area scrolls inside.
-  - Tab bar and save bar are fixed and full-width, with save-bar content aligned to the form column.
-  - Text inputs and textareas styled to match the rest of the app (sans-serif, themed).
-  - Repository shown as a compact readonly chip instead of a large empty-state box.
-  - "Start from template" picker aligned to the persona fields.
-  - Plainer copy for the "acts on behalf of a human" option.
+- **Agents overview redesigned** as a repo-grouped table, with each agent's persona description and current summary visible inline.
 - Runtime-default labels reworded from "Daemon default" to "Global default".
 
 ### Notes
 
-- Persona text is stored and surfaced but not yet injected into agent launch prompts; the token-budget banner reflects the planned injection.
+- Persona text is stored and surfaced but not yet injected into agent launch prompts.
 
 ## [0.1.1] - 2026-05-12
 
@@ -57,11 +36,7 @@ Web UI polish.
 
 ### Added
 
-- **Kanban card meta pills now expose hover hints**
-  - `GitHub issue #N` on the issue-number pill.
-  - `Priority: PN` on the priority pill.
-  - `Effort estimate: <XS…XL>` on the effort pill.
-  - Also applied to the archive, task-detail, and epic-drawer pill variants.
+- **Kanban card meta pills now expose hover hints** — GitHub issue number, priority, and effort estimate explain themselves on hover. Applied to the board, archive, task-detail, and epic-drawer variants.
 
 ## [0.1.0] - 2026-05-08
 
