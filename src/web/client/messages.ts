@@ -306,13 +306,50 @@ function minChannelRootId(items) {
   }, Number.POSITIVE_INFINITY);
   return Number.isFinite(min) ? min : 0;
 }
+function channelViewportVisibleRootIds() {
+  const body = $('messageThreadBody');
+  if (!body) return [];
+  const rows = Array.from(body.querySelectorAll('.channel-message-row[data-message-id]'));
+  const bodyRect = body.getBoundingClientRect?.();
+  const useRects = Boolean(bodyRect && ((Number(bodyRect.height) || 0) > 0 || (Number(body.clientHeight) || 0) > 0));
+  const scrollTop = Number(body.scrollTop) || 0;
+  const scrollBottom = scrollTop + (Number(body.clientHeight) || 0);
+  return rows
+    .filter(row => {
+      if (useRects && row.getBoundingClientRect) {
+        const rect = row.getBoundingClientRect();
+        return rect.bottom >= bodyRect.top && rect.top <= bodyRect.bottom;
+      }
+      const top = Number(row.offsetTop) || 0;
+      const bottom = top + (Number(row.offsetHeight) || 0);
+      return bottom >= scrollTop && top <= scrollBottom;
+    })
+    .map(row => normalizeChannelMessageId(row.dataset?.messageId || row.getAttribute?.('data-message-id')))
+    .filter(Boolean);
+}
+
+export function composeChannelRefreshRootIds(loadedRootIds, activeRootId, visibleRootIds, limit = CHANNEL_REFRESH_ROOT_IDS_LIMIT) {
+  const max = Math.max(1, Math.floor(Number(limit) || CHANNEL_REFRESH_ROOT_IDS_LIMIT));
+  const selected = new Set();
+  const priority = [];
+  const add = (value) => {
+    const id = normalizeChannelMessageId(value);
+    if (!id || selected.has(id) || priority.length >= max) return;
+    selected.add(id);
+    priority.push(id);
+  };
+  add(activeRootId);
+  for (const id of visibleRootIds || []) add(id);
+  const loaded = (loadedRootIds || []).map(id => normalizeChannelMessageId(id)).filter(Boolean);
+  for (let i = loaded.length - 1; i >= 0 && priority.length < max; i -= 1) add(loaded[i]);
+  return priority.sort((a, b) => a - b);
+}
+
 function channelRefreshRootIds() {
   const activeRootId = normalizeChannelMessageId(activeChannelThreadRootId);
+  const visibleRootIds = channelViewportVisibleRootIds();
   const loaded = channelRootMessagesFrom(channelMessages).map(message => normalizeChannelMessageId(message.id)).filter(Boolean);
-  const withoutActive = activeRootId ? loaded.filter(id => id !== activeRootId) : loaded;
-  const keep = withoutActive.slice(-(activeRootId ? CHANNEL_REFRESH_ROOT_IDS_LIMIT - 1 : CHANNEL_REFRESH_ROOT_IDS_LIMIT));
-  if (activeRootId) keep.push(activeRootId);
-  return Array.from(new Set(keep)).slice(-CHANNEL_REFRESH_ROOT_IDS_LIMIT);
+  return composeChannelRefreshRootIds(loaded, activeRootId, visibleRootIds, CHANNEL_REFRESH_ROOT_IDS_LIMIT);
 }
 
 function incomingChannelMessageCount(items) {

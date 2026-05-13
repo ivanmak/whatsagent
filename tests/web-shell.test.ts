@@ -7,6 +7,7 @@ import type { WhatsAgentConfig } from "../src/config.ts";
 import type { AgentRow } from "../src/db.ts";
 import { buildClientBundle } from "../src/web/client/build.ts";
 import { renderSafeMarkdownHtml } from "../src/web/client/markdown.ts";
+import { composeChannelRefreshRootIds } from "../src/web/client/messages.ts";
 import { installTruncateTitleFallback, truncatedAttrs } from "../src/web/client/truncate-tooltip.ts";
 import { pluralize, stripAnsi } from "../src/web/client/util.ts";
 import { escapeForScriptContext, renderWebShellClientScript } from "../src/web/client-script.ts";
@@ -269,6 +270,16 @@ test("workspace decoupling legacy settings code is removed", () => {
   expectAbsent(daemonDbSource, ["WorkspaceType"]);
 });
 
+test("WA-229 channel poll rootIds retain viewport-visible older roots", () => {
+  const loadedRootIds = Array.from({ length: 80 }, (_, i) => i + 1);
+  const ids = composeChannelRefreshRootIds(loadedRootIds, null, [7], 50);
+  expect(ids).toHaveLength(50);
+  expect(ids).toContain(7);
+  expect(ids).toContain(80);
+  expect(ids).not.toContain(1);
+  expect(ids).not.toContain(31);
+});
+
 test("renderWebShell emits parseable dashboard JavaScript", () => {
   const roles: AgentRow[] = [
     { id: "1", name: "architect", path: "architect", git_root: null, host_default: "claude-code", missing_at: null, last_discovered_at: "", created_at: "", updated_at: "" },
@@ -458,7 +469,10 @@ test("renderWebShell emits parseable dashboard JavaScript", () => {
   expect(kanbanSource).toContain("kanbanTasks = [];");
   expect(messagesSource).toContain("const CHANNEL_HISTORY_ROOT_PAGE_SIZE = 20;");
   expect(messagesSource).toContain("const CHANNEL_REFRESH_ROOT_IDS_LIMIT = 50;");
+  expect(messagesSource).toContain("function channelViewportVisibleRootIds()");
+  expect(messagesSource).toContain("export function composeChannelRefreshRootIds");
   expect(messagesSource).toContain("function channelRefreshRootIds()");
+  expect(messagesSource).toContain("return composeChannelRefreshRootIds(loaded, activeRootId, visibleRootIds, CHANNEL_REFRESH_ROOT_IDS_LIMIT);");
   expect(messagesSource).toContain("const suffix = '/channel/messages?rootLimit=' + CHANNEL_HISTORY_ROOT_PAGE_SIZE");
   expect(messagesSource).toContain("'&rootIds=' + encodeURIComponent(includeRootIds.join(','))");
   expect(messagesSource).toContain("const minLatestRootId = normalizeChannelMessageId(page.oldestRootId) || minChannelRootId(fetched);");

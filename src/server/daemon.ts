@@ -35,7 +35,7 @@ import { autoPurgeSweep, purgeWorkspace, repairOnStartup, restoreWorkspace, tras
 import { activeWorkspacePaths, daemonHomePaths, type DaemonHomePaths } from "../paths.ts";
 import { closeAllWorkspaceStates, closeWorkspaceState, hydrateActiveWorkspaces, loadWorkspaceState, type WorkspaceState } from "./workspace-state.ts";
 import { searchChannelMessages, searchDirectMessages, searchKanbanEpics, searchKanbanTasks } from "../db.ts";
-import { DEFAULT_KANBAN_TASK_ID_PREFIX, DEFAULT_MESSAGE_MAX_BODY_CHARS, addKanbanComment, addKanbanEpicComment, addPeerRule, archiveKanbanEpic, archiveKanbanTask, channelMessageToInboxRow, clearChatHistory, clearKanbanEpicCloseApproval, completeKanbanEpicWithApproval, countOpenKanbanEpicChildren, createKanbanEpic, createKanbanTask, getChatHistorySettings, getKanbanEpic, getKanbanSettings, getKanbanTask, getLaunchTokenForValidation, getAgentSessionCredentialForValidation, getMainAgent, getMessageSettings, getPeerPolicySettings, getPeerRuleMode, getPolicyMode, getPushStateStats, getRoleByName, insertKanbanNotification, insertMessage, insertAgentSessionCredential, renameRole, kanbanEpicNotificationToInboxRow, kanbanNotificationToInboxRow, listAllKanbanDependencies, listChannelHistory, listChannelMessages, listChannelMessagesByRoots, listKanbanActivity, listKanbanComments, listKanbanDependedBy, listKanbanDependencies, listKanbanEpicActivity, listKanbanEpicChildren, listKanbanEpicComments, listKanbanEpics, listKanbanTasks, listMessages as listDbMessages, listOpenKanbanEpicChildren, listPendingKanbanEpicNotifications, listPendingKanbanNotifications, listAgentInboxRows, listPendingMessages, listAgents, listRunningSessionDetails, listUnclassifiedKanbanTasks, listUnreadChannelMessages, markChannelMessagesRead, markKanbanEpicNotificationsRead, markKanbanNotificationsRead, markMessagesPushed, markMessagesRead, markRoleJoinedChannel, migrate, normalizeKanbanTaskIdPrefix, notifyKanbanEpicEvent, openFleetDb, peerRuleExists, postChannelMessage, pruneChatHistoryByRetention, removePeerRule, runStartupRepair, setChatHistorySettings, setKanbanEpicCloseApprovalPending, setKanbanEpicStatus, setKanbanSettings, setMessageSettings, setPeerRuleMode, setPolicyMode, setRoleDefaultHost, setRoleDefaultHostByIdRaw, setSessionSummary, consumeLaunchToken, hasActiveRunnerSession, revokeAgentSessionCredential, stopRunnerSession, updateKanbanEpic, updateKanbanTask, type ChannelMessageRow, type ChatHistorySettings, type KanbanCommentType, type KanbanEffort, type KanbanEpicNotificationRow, type KanbanEpicRow, type KanbanNotificationRow, type KanbanPriority, type KanbanStatus, type KanbanTaskRow, type MessageRow, type MessageSettings, type PeerPolicySettings, type PolicyMode, type AgentRow, type RuntimeSettings } from "../db.ts";
+import { DEFAULT_KANBAN_TASK_ID_PREFIX, DEFAULT_MESSAGE_MAX_BODY_CHARS, addKanbanComment, addKanbanEpicComment, addPeerRule, archiveKanbanEpic, archiveKanbanTask, channelMessageToInboxRow, clearChatHistory, clearKanbanEpicCloseApproval, completeKanbanEpicWithApproval, countOpenKanbanEpicChildren, createKanbanEpic, createKanbanTask, getChatHistorySettings, getKanbanEpic, getKanbanSettings, getKanbanTask, getLaunchTokenForValidation, getAgentSessionCredentialForValidation, getMainAgent, getMessageSettings, getPeerPolicySettings, getPeerRuleMode, getPolicyMode, getPushStateStats, getRoleByName, insertKanbanNotification, insertMessage, insertAgentSessionCredential, renameRole, kanbanEpicNotificationToInboxRow, kanbanNotificationToInboxRow, listAllKanbanDependencies, listChannelHistory, listChannelMessages, listKanbanActivity, listKanbanComments, listKanbanDependedBy, listKanbanDependencies, listKanbanEpicActivity, listKanbanEpicChildren, listKanbanEpicComments, listKanbanEpics, listKanbanTasks, listMessages as listDbMessages, listOpenKanbanEpicChildren, listPendingKanbanEpicNotifications, listPendingKanbanNotifications, listAgentInboxRows, listPendingMessages, listAgents, listRunningSessionDetails, listUnclassifiedKanbanTasks, listUnreadChannelMessages, markChannelMessagesRead, markKanbanEpicNotificationsRead, markKanbanNotificationsRead, markMessagesPushed, markMessagesRead, markRoleJoinedChannel, migrate, normalizeKanbanTaskIdPrefix, notifyKanbanEpicEvent, openFleetDb, peerRuleExists, postChannelMessage, pruneChatHistoryByRetention, removePeerRule, runStartupRepair, setChatHistorySettings, setKanbanEpicCloseApprovalPending, setKanbanEpicStatus, setKanbanSettings, setMessageSettings, setPeerRuleMode, setPolicyMode, setRoleDefaultHost, setRoleDefaultHostByIdRaw, setSessionSummary, consumeLaunchToken, hasActiveRunnerSession, revokeAgentSessionCredential, stopRunnerSession, updateKanbanEpic, updateKanbanTask, type ChannelMessageRow, type ChatHistorySettings, type KanbanCommentType, type KanbanEffort, type KanbanEpicNotificationRow, type KanbanEpicRow, type KanbanNotificationRow, type KanbanPriority, type KanbanStatus, type KanbanTaskRow, type MessageRow, type MessageSettings, type PeerPolicySettings, type PolicyMode, type AgentRow, type RuntimeSettings } from "../db.ts";
 import {
   deleteRepo as daoDeleteRepo,
   deleteRoleById as daoDeleteRoleById,
@@ -3818,33 +3818,16 @@ async function listFleetChannelMessages(state: DaemonState, ws: WorkspaceState, 
 }
 
 async function readAgentChannelMessages(state: DaemonState, ws: WorkspaceState, input: unknown): Promise<Response> {
-  const body = input && typeof input === "object" ? input as { limit?: unknown; sinceId?: unknown; beforeId?: unknown; rootLimit?: unknown; rootBeforeId?: unknown; rootSinceId?: unknown; latest?: unknown } : {};
-  const db = ws.db;
-  if (getPolicyMode(db) !== "channel") return json({ ok: false, error: "read_channel_messages is only available in Channel policy" }, { status: 403 });
-  const settings = getMessageSettings(db);
-  const hasRootCursor = Object.prototype.hasOwnProperty.call(body, "rootBeforeId") || Object.prototype.hasOwnProperty.call(body, "rootSinceId");
-  const hasFlatCursor = Object.prototype.hasOwnProperty.call(body, "sinceId") || Object.prototype.hasOwnProperty.call(body, "beforeId");
-  const latest = body.latest === true || body.latest === "true";
-  if (hasRootCursor || (!hasFlatCursor && !latest)) {
-    const explicitRootLimit = body.rootLimit !== undefined && body.rootLimit !== null;
-    const rootLimit = tryParseInteger(explicitRootLimit ? body.rootLimit : body.limit, { min: 1, max: explicitRootLimit ? 100 : 500, default: 20 });
-    if (rootLimit instanceof Response) return rootLimit;
-    const rootBeforeId = tryParseInteger(body.rootBeforeId, { min: 0, default: 0 });
-    if (rootBeforeId instanceof Response) return rootBeforeId;
-    const rootSinceId = tryParseInteger(body.rootSinceId, { min: 0, default: 0 });
-    if (rootSinceId instanceof Response) return rootSinceId;
-    const messages = listChannelMessagesByRoots(db, { rootLimit, rootBeforeId, rootSinceId }).map((message) => ({
-      ...message,
-      ...messageBodyStats(message.body, settings.maxBodyChars),
-    }));
-    return json({ ok: true, messages });
-  }
+  const body = input && typeof input === "object" ? input as { limit?: unknown; sinceId?: unknown; beforeId?: unknown; latest?: unknown } : {};
   const limit = tryParseInteger(body.limit, { min: 1, max: 500, default: 50 });
   if (limit instanceof Response) return limit;
   const sinceId = tryParseInteger(body.sinceId, { min: 0, default: 0 });
   if (sinceId instanceof Response) return sinceId;
   const beforeId = tryParseInteger(body.beforeId, { min: 0, default: 0 });
   if (beforeId instanceof Response) return beforeId;
+  const db = ws.db;
+  if (getPolicyMode(db) !== "channel") return json({ ok: false, error: "read_channel_messages is only available in Channel policy" }, { status: 403 });
+  const settings = getMessageSettings(db);
   const messages = listChannelMessages(db, { limit, sinceId, beforeId, latest: sinceId <= 0 }).map((message) => ({
     ...message,
     ...messageBodyStats(message.body, settings.maxBodyChars),

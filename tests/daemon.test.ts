@@ -1483,6 +1483,24 @@ test("channel policy stores threaded replies with root ids", async () => {
       expect(backlogBody.envelope).toContain(`parent_message_id: ${rootBody.message.id}`);
       expect(backlogBody.envelope).toContain(`root_message_id: ${rootBody.message.id}`);
 
+      const ws = daemon.state.workspaces.get(wsId);
+      if (!ws) throw new Error("workspace missing");
+      const serviceARole = getRoleByName(ws.db, "serviceA");
+      if (!serviceARole) throw new Error("serviceA missing");
+      const hotRoot = postChannelMessage(ws.db, { fromRoleId: serviceARole.id, fromSessionId: null, body: "hot root" });
+      for (let i = 1; i <= 500; i += 1) {
+        postChannelMessage(ws.db, { fromRoleId: serviceARole.id, fromSessionId: null, parentMessageId: hotRoot.id, body: `hot reply ${i}` });
+      }
+      const mcpHotHistory = await fetch(`${daemon.url}/api/v1/agent/read-channel-messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId: wsId, role: "serviceA", sessionId: serviceA.session_id, token: "service-a-thread-token", limit: 20 }),
+      });
+      const mcpHotBody = await mcpHotHistory.json() as { messages: Array<{ body: string; parent_message_id: number | null }> };
+      expect(mcpHotBody.messages).toHaveLength(20);
+      expect(mcpHotBody.messages.map((message) => message.body)).toEqual(Array.from({ length: 20 }, (_, i) => `hot reply ${481 + i}`));
+      expect(mcpHotBody.messages.some((message) => message.parent_message_id === null)).toBe(false);
+
       await fetch(`${daemon.url}${wsBase}/roles-by-id/serviceA%3AserviceA/stop`, { method: "POST" });
       await fetch(`${daemon.url}${wsBase}/roles-by-id/serviceB%3AserviceB/stop`, { method: "POST" });
     } finally {
