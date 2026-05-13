@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import type { ChangelogEntry } from "../changelog.ts";
 import type { AgentRow } from "../db.ts";
 import type { PeerPolicySettings, RuntimeSettings } from "../db.ts";
 import type { ChatHistorySettings } from "../db.ts";
@@ -54,6 +55,8 @@ export interface WebShellData {
   csrfToken?: string | null;
   /** Optional initial SPA view hint for shell renders without a workspace. */
   view?: string;
+  /** Parsed CHANGELOG.md entries loaded once at daemon startup. */
+  changelog?: ChangelogEntry[];
 }
 
 export function renderWebShell(data: WebShellData): string {
@@ -90,6 +93,7 @@ export function renderWebShell(data: WebShellData): string {
     currentWorkspace: data.currentWorkspace ?? null,
     workspacesAvailable,
     workspaces,
+    changelog: data.changelog ?? [],
     csrfToken: data.csrfToken ?? null,
     view: data.view ?? null,
   });

@@ -79,6 +79,7 @@ import { TerminalStateMirror } from "../runner/terminal-state-mirror.ts";
 import { HOST_TYPES, commandsKeyForHost, probeAllRuntimes, probeRuntime, type RuntimeDetection } from "../runner/runtime-detect.ts";
 import { normalizeHostType, type HostType, type RunnerMetadata } from "../runner/protocol.ts";
 import { buildClientBundle } from "../web/client/build.ts";
+import { loadChangelog, type ChangelogEntry } from "../changelog.ts";
 import { renderWebShell } from "../web/shell.ts";
 import { parseInteger, parseIntegerArray, type IntegerParseOptions } from "./parse.ts";
 
@@ -120,6 +121,8 @@ export interface DaemonState {
   runtimeDetection: Record<HostType, RuntimeDetection>;
   /** Browser client bundle built once at daemon startup and inlined per shell render. */
   clientBundle: string;
+  /** Parsed CHANGELOG.md loaded once at daemon startup for Settings → About. */
+  changelog: ChangelogEntry[];
 
   // -------- Phase 2 daemon-home additions ------------------------------------
   // Phase 2a-iii adds these alongside the legacy per-fleet state. Phase 2a-iv
@@ -788,6 +791,7 @@ async function loadState(opts: { port?: number; consoleLogs?: boolean; hostCheck
 
   const runtimeDetection = await probeAllRuntimes(getDaemonRuntimeSettings(daemonDb).commands);
   const clientBundle = await buildClientBundle();
+  const changelog = loadChangelog(fileURLToPath(new URL("../../", import.meta.url)));
   const rbacModeCeiling = resolveRbacModeCeiling(opts.rbacModeCeiling, logger);
 
   return {
@@ -801,6 +805,7 @@ async function loadState(opts: { port?: number; consoleLogs?: boolean; hostCheck
     hostCheckWarnedKeys: new Set(),
     runtimeDetection,
     clientBundle,
+    changelog,
     daemonDb,
     daemonHome: homePaths.home,
     daemonHomePaths: homePaths,
@@ -970,6 +975,7 @@ async function shell(state: DaemonState, ws: WorkspaceState, req: Request): Prom
     currentWorkspace: { id: ws.id, name: ws.name },
     workspacesAvailable: activeWorkspaces.length,
     workspaces: activeWorkspaces,
+    changelog: state.changelog,
     csrfToken: auth?.csrfToken ?? null,
   });
 }
@@ -993,6 +999,7 @@ async function overviewShell(state: DaemonState, req: Request): Promise<string> 
     currentWorkspace: null,
     workspacesAvailable: activeWorkspaces.length,
     workspaces: activeWorkspaces,
+    changelog: state.changelog,
     view: "workspaces-overview",
     csrfToken: auth?.csrfToken ?? null,
   });

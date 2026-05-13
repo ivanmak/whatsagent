@@ -1272,6 +1272,27 @@ function aboutAppIconImg(): string {
   return '<img class="about-app-icon" src="' + src + '" srcset="' + srcset + '" width="160" height="160" alt="" aria-hidden="true" decoding="async" />';
 }
 
+function aboutChangelogSection() {
+  const entries = Array.isArray(getState().changelog) ? getState().changelog : [];
+  if (entries.length === 0) return '';
+  const rows = entries.map((entry, index) => {
+    const version = String(entry?.version || '').trim();
+    const title = String(entry?.title || '').trim();
+    const body = String(entry?.bodyMarkdown || '').trim();
+    if (!version) return '';
+    const label = title ? version + ' — ' + title : version;
+    return '<details class="about-changelog-entry"' + (index === 0 ? ' open' : '') + '>' +
+      '<summary class="about-changelog-summary"><span class="about-changelog-chevron" aria-hidden="true">▶</span><span class="about-changelog-title">' + esc(label) + '</span></summary>' +
+      '<div class="about-changelog-body markdown-body">' + renderSafeMarkdown(body) + '</div>' +
+    '</details>';
+  }).join('');
+  if (!rows) return '';
+  return '<div class="about-changelog">' +
+    '<div class="about-changelog-head"><h3 class="about-changelog-heading">What\'s new</h3><a href="https://github.com/ivanmak/whatsagent/blob/master/CHANGELOG.md" target="_blank" rel="noopener noreferrer">View full history →</a></div>' +
+    rows +
+  '</div>';
+}
+
 function aboutPanel() {
   const state = getState();
   const version = state.appVersion || '0.1.0';
@@ -1297,6 +1318,7 @@ function aboutPanel() {
       '<div class="about-info-row"><span class="about-info-label">Build</span><span class="about-info-value mono">' + esc(build) + '</span></div>' +
       '<div class="about-info-row"><span class="about-info-label">Author</span><span class="about-info-value">Ivan Mak</span></div>' +
     '</div>' +
+    aboutChangelogSection() +
     '<div class="about-legal">' +
       '© 2026 Ivan Mak. Released under the MIT License. Portions use open-source software; see LICENSES.md for full attribution.' +
     '</div>' +

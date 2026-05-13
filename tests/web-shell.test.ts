@@ -1714,6 +1714,7 @@ test("renderWebShell carries currentWorkspace + workspacesAvailable into initial
     currentWorkspace: { id: "abc123", name: "demo" },
     workspacesAvailable: 1,
     workspaces: [{ id: "abc123", name: "demo", status: "active", role_count: 2, runner_count: 1, trashed_at: null }],
+    changelog: [{ version: "[0.2.0] - 2026-05-12", bodyMarkdown: "### Added\n\n- Thing" }],
     clientBundle: "__WHATSAGENT_INITIAL_STATE__",
   } as any);
   const renderedScript1 = html1.match(/<script>([\s\S]*)<\/script>/)?.[1] ?? "";
@@ -1721,12 +1722,14 @@ test("renderWebShell carries currentWorkspace + workspacesAvailable into initial
   expect(renderedScript1).toContain('"currentWorkspace":{"id":"abc123","name":"demo"}');
   expect(renderedScript1).toContain('"workspacesAvailable":1');
   expect(renderedScript1).toContain('"workspaces":[{"id":"abc123","name":"demo","status":"active","role_count":2,"runner_count":1,"trashed_at":null}]');
+  expect(renderedScript1).toContain('"changelog":[{"version":"[0.2.0] - 2026-05-12","bodyMarkdown":"### Added\\n\\n- Thing"}]');
 
   // Empty registry: currentWorkspace is null, workspacesAvailable defaults to 0.
   const html2 = renderWebShell({ root: "", config, roles: [], mainRole: null, runners: [], clientBundle: "__WHATSAGENT_INITIAL_STATE__" });
   const renderedScript2 = html2.match(/<script>([\s\S]*)<\/script>/)?.[1] ?? "";
   expect(renderedScript2).toContain('"currentWorkspace":null');
   expect(renderedScript2).toContain('"workspacesAvailable":0');
+  expect(renderedScript2).toContain('"changelog":[]');
 
   // Diagnostics panel surfaces workspace + workspace path rows.
   expect(agentsSource).toContain("kv('Workspace'");
@@ -2197,6 +2200,16 @@ test("EP-015 WA-059: Settings About uses identity card", () => {
   expect(settingsSource).toContain("' + esc(build) + '");
   expect(settingsSource).toContain("Ivan Mak");
   expect(settingsSource).toContain("function aboutAppIconImg(): string");
+  expect(settingsSource).toContain("function aboutChangelogSection()");
+  expect(settingsSource).toContain("Array.isArray(getState().changelog)");
+  expect(settingsSource).toContain("if (entries.length === 0) return '';");
+  expect(settingsSource).toContain("class=\"about-changelog\"");
+  expect(settingsSource).toContain("class=\"about-changelog-heading\"");
+  expect(settingsSource).toContain("class=\"about-changelog-entry\"' + (index === 0 ? ' open' : '')");
+  expect(settingsSource).toContain("String(entry?.bodyMarkdown || '').trim()");
+  expect(settingsSource).toContain("const label = title ? version + ' — ' + title : version;");
+  expect(settingsSource).toContain("renderSafeMarkdown(body)");
+  expect(settingsSource).toContain("View full history →");
   expect(settingsSource).toContain("/assets/icons/whatsagent-' + accent + '-256.png");
   expect(settingsSource).toContain("/assets/icons/whatsagent-' + accent + '-512.png 2x");
   expect(settingsSource).toContain("class=\"about-app-icon\" src=");
@@ -2210,6 +2223,9 @@ test("EP-015 WA-059: Settings About uses identity card", () => {
   expect(shellOverridesSource).toContain("background: color-mix(in srgb, var(--accent) 6%, var(--surface-soft));");
   expect(shellOverridesSource).toContain("[data-theme=\"dark\"] .about-hero { background: color-mix(in srgb, var(--accent) 10%, #080e18); }");
   expect(shellOverridesSource).toContain(".about-network { position: absolute;");
+  expect(shellOverridesSource).toContain(".about-changelog { margin: 0 32px 28px;");
+  expect(shellOverridesSource).toContain(".about-changelog-heading { margin: 0;");
+  expect(shellOverridesSource).toContain(".about-changelog-entry[open] .about-changelog-chevron { transform: rotate(90deg);");
   expect(shellOverridesSource).toContain(".about-network-edge { stroke: color-mix(in srgb, var(--accent) 28%, transparent);");
   expect(shellOverridesSource).toContain(".about-network-dot { fill: color-mix(in srgb, var(--accent) 44%, transparent);");
   expect(shellOverridesSource).toContain(":root[data-theme=\"auto\"] .about-network-edge { stroke: color-mix(in srgb, var(--accent) 16%, transparent);");

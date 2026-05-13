@@ -402,13 +402,28 @@ export const WEB_SHELL_OVERRIDES = String.raw`
     .about-info-label { width: 140px; flex-shrink: 0; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
     .about-info-value { font-size: 13px; font-weight: 600; color: var(--text-strong); }
     .about-info-value.mono { font-family: var(--font-mono); }
+    .about-changelog { margin: 0 32px 28px; border: 1px solid var(--border-soft); border-radius: 14px; background: color-mix(in srgb, var(--surface) 82%, var(--accent) 4%); overflow: hidden; }
+    .about-changelog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--border-soft); }
+    .about-changelog-heading { margin: 0; color: var(--text-strong); font-size: 13px; font-weight: 900; letter-spacing: -0.01em; }
+    .about-changelog-head a { color: var(--accent); font-size: 12px; font-weight: 800; text-decoration: none; white-space: nowrap; }
+    .about-changelog-head a:hover { text-decoration: underline; }
+    .about-changelog-entry { border-top: 1px solid var(--border-soft); }
+    .about-changelog-entry:first-of-type { border-top: 0; }
+    .about-changelog-summary { display: flex; align-items: center; gap: 8px; padding: 13px 18px; cursor: pointer; color: var(--text-strong); font-size: 13px; font-weight: 800; list-style: none; }
+    .about-changelog-summary::-webkit-details-marker { display: none; }
+    .about-changelog-chevron { color: var(--accent); font-size: 10px; transition: transform .15s ease; }
+    .about-changelog-entry[open] .about-changelog-chevron { transform: rotate(90deg); }
+    .about-changelog-body { padding: 0 18px 18px 34px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+    .about-changelog-body h3 { margin: 14px 0 8px; color: var(--text-strong); font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em; }
+    .about-changelog-body ul { margin: 8px 0 0 18px; padding: 0; }
+    .about-changelog-body li + li { margin-top: 6px; }
     .about-legal { margin: 0 32px 32px; padding: 16px 20px; border-radius: 10px; background: var(--surface-soft); border: 1px solid var(--border-soft); font-size: 11.5px; color: var(--muted); line-height: 1.65; font-family: var(--font-mono); }
     @media (max-width: 720px) {
       .about-hero { min-height: 280px; }
       .about-hero-content { flex-direction: column; align-items: flex-start; gap: 24px; padding: 36px 28px; }
       .about-app-icon { width: 120px; height: 120px; }
       .about-wordmark { font-size: 36px; }
-      .about-info, .about-legal { padding-left: 20px; padding-right: 20px; margin-left: 16px; margin-right: 16px; }
+      .about-info, .about-changelog, .about-legal { padding-left: 20px; padding-right: 20px; margin-left: 16px; margin-right: 16px; }
     }
     .message-length-counter { align-self: flex-end; flex: 0 0 auto; color: var(--muted); font-family: var(--font-mono); font-size: 11px; white-space: nowrap; }
     .message-length-counter.over-limit { color: var(--red); font-weight: 800; }
