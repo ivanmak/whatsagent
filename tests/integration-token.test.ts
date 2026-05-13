@@ -1251,14 +1251,12 @@ test("EP-031 review fix: LRU keys are compound (delivery_kind + channel_id + id)
   // gate releases — the cross-table-key property is the assertion under test.
   const directDup = makeMessageRow(42, "direct");
   const channelDup = { ...makeMessageRow(42, "channel"), channel_id: "general" } as MessageRow;
-  const { tools } = fakeToolsForPush([[directDup], [], [], [channelDup]]);
+  const { tools } = fakeToolsForPush([[directDup], [], [channelDup]]);
   let clock = 0;
-  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock, minDrainMs: 1_000 });
+  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock });
   expect(await controller.pollOnce()).toBe(1);
   clock = 100;
-  expect(await controller.pollOnce()).toBe(0); // empty poll → drainStartedAt = 100
-  clock = 1_500;
-  expect(await controller.pollOnce()).toBe(0); // 1400ms elapsed since drain start → clears pendingSignal
+  expect(await controller.pollOnce()).toBe(0); // empty poll → single-poll drain release → pendingSignal=false
   expect(await controller.pollOnce()).toBe(1); // channel key distinct from direct → fresh signal
   expect(pi.sendUserMessageCalls).toHaveLength(2);
 });
@@ -1270,9 +1268,9 @@ test("WA-228 coalesce: second batch of fresh rows mid-pending-signal is absorbed
   const batch2 = [makeMessageRow(702, "direct"), makeMessageRow(703, "channel")];
   const { tools, calls } = fakeToolsForPush([batch1, batch2]);
   let clock = 0;
-  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock, minDrainMs: 5_000, refireMs: 30_000 });
+  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock, refireMs: 30_000 });
   expect(await controller.pollOnce()).toBe(1);
-  clock = 1_000; // well below refireMs, still pendingSignal
+  clock = 1_000; // well below refireMs, still pendingSignal, no DB-empty observed
   expect(await controller.pollOnce()).toBe(0);
   // Only first batch's signal fired; second batch absorbed into LRU.
   expect(pi.sendUserMessageCalls).toHaveLength(1);
@@ -1280,57 +1278,35 @@ test("WA-228 coalesce: second batch of fresh rows mid-pending-signal is absorbed
   expect(calls.markMessagesPushed.flat().sort()).toEqual([701, 702]);
 });
 
-test("WA-228 drain: empty pollMessages for minDrainMs clears pendingSignal so the next fresh row fires a new signal", async () => {
+test("WA-228 drain: single empty pollMessages clears pendingSignal (no minDrainMs blind window)", async () => {
   const { createPiPushController } = await import("../src/integrations/pi-extension.ts");
   const pi = fakePiApi();
   const { tools } = fakeToolsForPush([
     [makeMessageRow(801, "direct")],
     [],
-    [],
     [makeMessageRow(802, "direct")],
   ]);
   let clock = 0;
-  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock, minDrainMs: 5_000 });
+  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock });
   expect(await controller.pollOnce()).toBe(1); // signal #1
   clock = 100;
-  expect(await controller.pollOnce()).toBe(0); // empty → drainStartedAt = 100
-  clock = 6_000;
-  expect(await controller.pollOnce()).toBe(0); // 5900ms elapsed since drain start → clears pendingSignal
-  expect(await controller.pollOnce()).toBe(1); // pendingSignal=false now → signal #2 fires
+  expect(await controller.pollOnce()).toBe(0); // single DB-empty + !active → clears pendingSignal immediately
+  expect(await controller.pollOnce()).toBe(1); // pendingSignal=false → signal #2 fires for new row
   expect(pi.sendUserMessageCalls).toHaveLength(2);
 });
 
-test("WA-228 drain: DB-empty alone (with no time progress) does NOT clear pendingSignal", async () => {
-  const { createPiPushController } = await import("../src/integrations/pi-extension.ts");
-  const pi = fakePiApi();
-  const { tools } = fakeToolsForPush([
-    [makeMessageRow(810, "direct")],
-    [],
-    [],
-    [makeMessageRow(811, "direct")],
-  ]);
-  let clock = 0;
-  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock, minDrainMs: 5_000 });
-  expect(await controller.pollOnce()).toBe(1);
-  clock = 100; expect(await controller.pollOnce()).toBe(0); // drain starts
-  clock = 200; expect(await controller.pollOnce()).toBe(0); // still draining (<5s)
-  // Fourth poll: a new fresh row arrives but pendingSignal still set → coalesce suppresses.
-  expect(await controller.pollOnce()).toBe(0);
-  expect(pi.sendUserMessageCalls).toHaveLength(1);
-});
-
-test("WA-228 drain: LRU-filtered rows (fresh.length=0 but messages.length>0) do NOT count as drain progress", async () => {
+test("WA-228 drain: LRU-filtered rows (fresh.length=0 but messages.length>0) do NOT count as drain proof", async () => {
   const { createPiPushController } = await import("../src/integrations/pi-extension.ts");
   const pi = fakePiApi();
   const recurring = makeMessageRow(820, "channel");
   // First poll signals. Subsequent polls return the SAME row (channel rows
   // remain pending until check_messages cursor moves). LRU filters it. The
-  // drain logic must NOT advance — agent has not acked.
+  // drain logic must NOT release — agent has not acked.
   const { tools } = fakeToolsForPush([
     [recurring], [recurring], [recurring], [recurring], [recurring],
   ]);
   let clock = 0;
-  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock, minDrainMs: 1_000 });
+  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock });
   expect(await controller.pollOnce()).toBe(1);
   clock = 5_000;
   expect(await controller.pollOnce()).toBe(0);
@@ -1348,7 +1324,7 @@ test("WA-228 refire: pendingSignal outstanding past refireMs with rows in DB and
   // DB keeps returning the same row (e.g. agent dropped the first signal).
   const { tools } = fakeToolsForPush([[sticky], [sticky], [sticky]]);
   let clock = 0;
-  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock, minDrainMs: 5_000, refireMs: 30_000 });
+  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock, refireMs: 30_000 });
   expect(await controller.pollOnce()).toBe(1); // initial
   clock = 15_000;
   expect(await controller.pollOnce()).toBe(0); // pre-refire, LRU absorbs (already in LRU)
@@ -1365,7 +1341,7 @@ test("WA-228 turn-liveness: agent_start suppresses refire even when pendingSigna
   const sticky = makeMessageRow(840, "channel");
   const { tools } = fakeToolsForPush([[sticky], [sticky], [sticky]]);
   let clock = 0;
-  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock, refireMs: 10_000, minDrainMs: 5_000 });
+  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock, refireMs: 10_000 });
   expect(await controller.pollOnce()).toBe(1); // initial signal
   pi.fireAgentStart(); // agent picked it up, mid-turn
   clock = 20_000; // well past refireMs
@@ -1378,29 +1354,27 @@ test("WA-228 turn-liveness: agent_start suppresses refire even when pendingSigna
   expect(pi.sendUserMessageCalls).toHaveLength(2);
 });
 
-test("WA-228 turn-liveness: drain progress also pauses while agent turn is active", async () => {
+test("WA-228 turn-liveness: drain release pauses while agent turn is active", async () => {
   const { createPiPushController } = await import("../src/integrations/pi-extension.ts");
   const pi = fakePiApi();
+  const sticky = makeMessageRow(850, "channel");
   const { tools } = fakeToolsForPush([
-    [makeMessageRow(850, "direct")],
-    [], [], [],
-    [makeMessageRow(851, "direct")],
+    [makeMessageRow(849, "direct")],
+    [], // empty poll, but during active turn → must NOT clear pendingSignal
+    [sticky], // post-turn fresh-ish row (LRU-filtered actually, but same key set)
   ]);
   let clock = 0;
-  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock, minDrainMs: 1_000 });
+  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock, refireMs: 60_000 });
   expect(await controller.pollOnce()).toBe(1); // signal #1
   pi.fireAgentStart();
   clock = 5_000;
-  expect(await controller.pollOnce()).toBe(0); // empty + turn active → no drain progress
-  clock = 10_000;
-  expect(await controller.pollOnce()).toBe(0);
-  // Now end the turn. Drain progress must start fresh from 0, not from the
-  // 5s/10s polls above.
+  expect(await controller.pollOnce()).toBe(0); // empty + turn active → pendingSignal preserved
+  expect(pi.sendUserMessageCalls).toHaveLength(1);
+  // Turn ends; next poll has a different row in DB → not drain. pendingSignal must
+  // still be set since the active-turn poll above didn't release.
   pi.fireAgentEnd();
-  expect(await controller.pollOnce()).toBe(0); // drainStartedAt = 10_000
-  clock = 10_500; // 500ms after drain started — below minDrainMs
-  // Fresh row arrives before drain elapsed → coalesce, no second signal.
-  expect(await controller.pollOnce()).toBe(0);
+  clock = 6_000;
+  expect(await controller.pollOnce()).toBe(0); // sticky row, but pendingSignal still set + below refireMs → coalesce
   expect(pi.sendUserMessageCalls).toHaveLength(1);
 });
 

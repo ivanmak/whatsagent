@@ -294,14 +294,6 @@ interface PiPushControllerOptions {
    */
   errorLogIntervalMs?: number;
   /**
-   * WA-228 drain window: consecutive ms of empty `pollMessages` results
-   * required to clear `pendingSignal`. "Empty" means DB-empty
-   * (`messages.length === 0`), not LRU-empty — drain implies the agent
-   * acked via check_messages, not that the controller has already
-   * signaled every row. Defaults to 8000ms.
-   */
-  minDrainMs?: number;
-  /**
    * WA-228 refire failsafe: when `pendingSignal` has been outstanding for
    * this many ms AND no agent turn is currently active, fire one more
    * signal even though we have not observed drain. Guards against the
@@ -327,20 +319,23 @@ interface PiPushControllerOptions {
  *   text, Kanban details, channel body, or launch token values.
  * - WA-228 signal coalescing + turn-liveness gate: once a signal lands,
  *   `pendingSignal` blocks further signals until one of:
- *   - DB drain: `tools.pollMessages` returns an empty list for at least
- *     `minDrainMs` while no agent turn is active (the agent acked via
- *     check_messages, which transitions rows out of pending+pushed). The
- *     drain test deliberately uses `messages.length === 0`, NOT
- *     `fresh.length === 0`, so LRU-filtered rows that are still pending
- *     in the DB do not falsely trigger drain.
+ *   - DB drain: a single `tools.pollMessages` returning an empty list
+ *     while no agent turn is active. The empty result is proof that the
+ *     agent acked via check_messages (rows transitioned out of
+ *     pending+pushed). The check deliberately uses `messages.length === 0`,
+ *     NOT `fresh.length === 0`, so LRU-filtered rows that are still
+ *     pending in the DB do not falsely trigger drain. Single-poll release
+ *     is intentional: waiting longer to clear introduces a blind window
+ *     where new rows arrive post-ack but get silently coalesced.
  *   - Refire failsafe: `pendingSignal` has been outstanding for
  *     `refireMs` AND no agent turn is active. Fires one fresh signal in
  *     case the prior one was dropped by the runtime.
  * - WA-228 turn-liveness: `pi.on("agent_start")` flips `agentTurnActive`
- *   true; `pi.on("agent_end")` flips it false. While true, drain progress
- *   and the refire failsafe pause. New fresh rows arriving mid-turn are
- *   silently absorbed into the LRU (and direct/broadcast marked pushed)
- *   so the next pollOnce after the turn ends does not double-signal.
+ *   true; `pi.on("agent_end")` flips it false. While true, drain release
+ *   and the refire failsafe both pause. New fresh rows arriving mid-turn
+ *   are silently absorbed into the LRU (and direct/broadcast marked
+ *   pushed) so the next pollOnce after the turn ends does not
+ *   double-signal.
  * - On successful signal, marks direct + broadcast rows as `pushed` via
  *   `tools.markMessagesPushed(messageIds)`. Channel + Kanban rows are
  *   intentionally left pending — their delivery cursors live elsewhere
@@ -359,7 +354,6 @@ export function createPiPushController(tools: AgentTools, pi: PiExtensionApi, op
   const intervalMs = Math.max(250, options.pollIntervalMs ?? 1000);
   const maxBackoffMs = Math.max(intervalMs, options.maxBackoffMs ?? 30_000);
   const errorLogIntervalMs = Math.max(0, options.errorLogIntervalMs ?? 60_000);
-  const minDrainMs = Math.max(0, options.minDrainMs ?? 8_000);
   const refireMs = Math.max(0, options.refireMs ?? 30_000);
   const now = options.now ?? (() => Date.now());
   const logError = options.logError ?? ((msg: string) => console.error(msg));
@@ -376,16 +370,9 @@ export function createPiPushController(tools: AgentTools, pi: PiExtensionApi, op
   let pendingSignal = false;
   let lastSignalAt = Number.NEGATIVE_INFINITY;
   let agentTurnActive = false;
-  let drainStartedAt: number | null = null;
 
   pi.on("agent_start", () => { agentTurnActive = true; });
-  pi.on("agent_end", () => {
-    agentTurnActive = false;
-    // Reset drain progress so the post-turn window starts fresh; agent
-    // may not have acked, in which case the next poll's DB result will
-    // immediately abort drain anyway.
-    drainStartedAt = null;
-  });
+  pi.on("agent_end", () => { agentTurnActive = false; });
 
   const signalText = (count: number): string => `WhatsAgent inbox has ${count} item${count === 1 ? "" : "s"}. Call check_messages now.`;
   const stopController = (): void => {
@@ -416,24 +403,18 @@ export function createPiPushController(tools: AgentTools, pi: PiExtensionApi, op
       const messages = Array.isArray(polled.messages) ? polled.messages : [];
       const time = now();
 
-      // DB-empty: candidate drain. Only counts toward drain when a signal
-      // is outstanding AND no turn is active.
+      // DB-empty + no active turn = single-poll drain proof: agent acked
+      // via check_messages. Release the coalesce gate immediately so any
+      // row arriving on the next poll fires a fresh signal — waiting
+      // longer (e.g. multiple empty polls) introduces a blind window
+      // where post-ack arrivals are silently coalesced.
       if (messages.length === 0) {
         if (pendingSignal && !agentTurnActive) {
-          if (drainStartedAt === null) {
-            drainStartedAt = time;
-          } else if (time - drainStartedAt >= minDrainMs) {
-            pendingSignal = false;
-            drainStartedAt = null;
-          }
-        } else {
-          drainStartedAt = null;
+          pendingSignal = false;
         }
         return 0;
       }
 
-      // DB has rows → drain progress aborts.
-      drainStartedAt = null;
       const fresh = messages.filter((m) => !pushed.has(messageKey(m)));
       const shouldRefire = pendingSignal && !agentTurnActive && time - lastSignalAt >= refireMs;
 
@@ -470,7 +451,6 @@ export function createPiPushController(tools: AgentTools, pi: PiExtensionApi, op
       // retry.
       pendingSignal = true;
       lastSignalAt = time;
-      drainStartedAt = null;
       for (const m of fresh) pushed.add(messageKey(m));
       await markDirectBroadcastPushed(fresh);
       return signalCount;
