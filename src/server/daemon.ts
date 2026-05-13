@@ -2179,53 +2179,59 @@ async function patchRoleByIdEndpoint(state: DaemonState, ws: WorkspaceState, rol
     try { assertPersonaInputWithinHardLimits(persona as AgentPersonaInput); }
     catch (e) { return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 400 }); }
   }
-  let next = role;
-  try {
-    if (typeof body.name === "string") {
-      const rawName = body.name.trim();
-      if (rawName.includes(":")) return json({ ok: false, error: "name cannot contain ':'" }, { status: 400 });
-      // Round-6 fix: sanitize before the workspace-wide uniqueness
-      // check; otherwise a raw `dev!` slips past then collides as `dev`
-      // post-sanitization in the DAO.
-      const canonicalName = sanitizeRoleName(rawName);
-      if (!canonicalName) return json({ ok: false, error: "name resolved to empty after sanitisation" }, { status: 400 });
-      // EP-DEC-RUN WA-006: workspace-wide name guard removed. Per-repo
-      // UNIQUE(repo_id, name) still applies via the DAO; cross-repo
-      // duplicates are now allowed because runner addressing keys on
-      // display_id everywhere.
-      // EP-DEC-RUN WA-002: a rename moves displayId → moves the runner
-      // metadata FS path, which would orphan a live runner writing to the
-      // old path. Refuse with 409 (advisor msg #2 + #8: cascade-stop in
-      // endpoint, not DAO; preferred semantics is reject not auto-stop
-      // because rename is a metadata op, not a destructive one).
-      // Filter on `reachable` (advisor msg #10) so stale metadata that
-      // discoverAndReconcileRunners has already marked dead does not
-      // block a rename. Mirrors the live-only `&& item.reachable` check
-      // used at the launch / push-nudge call sites in this file.
-      if (canonicalName !== role.name) {
-        const runners = await discoverAndReconcileRunners(state, ws);
-        // Match by display_id (advisor msg #14): once two repos can each
-        // have a `main` role, matching by bare name would reject this
-        // role's rename whenever ANY same-bare-name runner is live.
-        if (runners.some((r) => r.display_id === role.display_id && r.reachable)) {
-          return json({ ok: false, error: `role "${role.display_id || role.name}" has a live runner; stop the runner before renaming (EP-DEC-RUN cascade)` }, { status: 409 });
-        }
+  let canonicalName: string | undefined;
+  if (typeof body.name === "string") {
+    const rawName = body.name.trim();
+    if (rawName.includes(":")) return json({ ok: false, error: "name cannot contain ':'" }, { status: 400 });
+    // Round-6 fix: sanitize before the workspace-wide uniqueness
+    // check; otherwise a raw `dev!` slips past then collides as `dev`
+    // post-sanitization in the DAO.
+    canonicalName = sanitizeRoleName(rawName);
+    if (!canonicalName) return json({ ok: false, error: "name resolved to empty after sanitisation" }, { status: 400 });
+    // EP-DEC-RUN WA-006: workspace-wide name guard removed. Per-repo
+    // UNIQUE(repo_id, name) still applies via the DAO; cross-repo
+    // duplicates are now allowed because runner addressing keys on
+    // display_id everywhere.
+    // EP-DEC-RUN WA-002: a rename moves displayId → moves the runner
+    // metadata FS path, which would orphan a live runner writing to the
+    // old path. Refuse with 409 (advisor msg #2 + #8: cascade-stop in
+    // endpoint, not DAO; preferred semantics is reject not auto-stop
+    // because rename is a metadata op, not a destructive one).
+    // Filter on `reachable` (advisor msg #10) so stale metadata that
+    // discoverAndReconcileRunners has already marked dead does not
+    // block a rename. Mirrors the live-only `&& item.reachable` check
+    // used at the launch / push-nudge call sites in this file.
+    if (canonicalName !== role.name) {
+      const runners = await discoverAndReconcileRunners(state, ws);
+      // Match by display_id (advisor msg #14): once two repos can each
+      // have a `main` role, matching by bare name would reject this
+      // role's rename whenever ANY same-bare-name runner is live.
+      if (runners.some((r) => r.display_id === role.display_id && r.reachable)) {
+        return json({ ok: false, error: `role "${role.display_id || role.name}" has a live runner; stop the runner before renaming (EP-DEC-RUN cascade)` }, { status: 409 });
       }
-      next = daoRenameRoleById(ws.db, roleId, canonicalName);
     }
-    if (body.host !== undefined) {
-      const ts = new Date().toISOString();
-      const host = body.host === null || body.host === "default"
-        ? null
-        : normalizeHostType(typeof body.host === "string" ? body.host : undefined);
-      ws.db.run("UPDATE agents SET host_default = ?, default_host_type = ?, updated_at = ? WHERE id = ?",
-        [host ?? "claude-code", host, ts, roleId]);
-      next = daoGetRoleById(ws.db, roleId)!;
-    }
-    const warnings = writeAgentPersonaFromBody(ws.db, role.id, body as Record<string, unknown>);
-    next = daoGetRoleById(ws.db, role.id) ?? next;
-    state.logger.info("role.patched", { workspace: ws.id, role: roleId, displayId: next.display_id });
-    return json({ ok: true, role: roleToApi(next, ws.db), warnings });
+  }
+  try {
+    const result = ws.db.transaction(() => {
+      let next = role;
+      if (canonicalName !== undefined) {
+        next = daoRenameRoleById(ws.db, roleId, canonicalName);
+      }
+      if (body.host !== undefined) {
+        const ts = new Date().toISOString();
+        const host = body.host === null || body.host === "default"
+          ? null
+          : normalizeHostType(typeof body.host === "string" ? body.host : undefined);
+        ws.db.run("UPDATE agents SET host_default = ?, default_host_type = ?, updated_at = ? WHERE id = ?",
+          [host ?? "claude-code", host, ts, roleId]);
+        next = daoGetRoleById(ws.db, roleId)!;
+      }
+      const warnings = writeAgentPersonaFromBody(ws.db, role.id, body as Record<string, unknown>);
+      next = daoGetRoleById(ws.db, role.id) ?? next;
+      return { next, warnings };
+    })();
+    state.logger.info("role.patched", { workspace: ws.id, role: roleId, displayId: result.next.display_id });
+    return json({ ok: true, role: roleToApi(result.next, ws.db), warnings: result.warnings });
   } catch (e) {
     return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 400 });
   }

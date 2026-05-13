@@ -99,18 +99,43 @@ interface AgentRolesBody {
 interface RoleCrudBody {
   ok: boolean;
   error?: string;
-  roles?: Array<{ id: string; repoId: string; name: string; persona: Record<string, string> | null }>;
+  role?: { id: string; repoId: string; name: string; hostDefault: string | null; defaultHostType: string | null; persona: Record<string, string> | null };
+  roles?: Array<{ id: string; repoId: string; name: string; hostDefault: string | null; defaultHostType: string | null; persona: Record<string, string> | null }>;
 }
 
 function rolePersistenceSnapshot(h: SeedHandle): { agents: unknown[]; personas: unknown[] } {
   const ws = daemon!.state.workspaces.get(h.wsId)!;
   return {
-    agents: ws.db.query<{ id: string; repo_id: string; name: string }, []>("SELECT id, repo_id, name FROM agents ORDER BY id").all(),
-    personas: ws.db.query<{ agent_id: string }, []>("SELECT agent_id FROM agent_personas ORDER BY agent_id").all(),
+    agents: ws.db.query<{ id: string; repo_id: string; name: string; host_default: string; default_host_type: string | null }, []>(
+      "SELECT id, repo_id, name, host_default, default_host_type FROM agents ORDER BY id",
+    ).all(),
+    personas: ws.db.query<{ agent_id: string; description: string; responsibilities: string; boundaries: string; skills: string; working_style: string; extra_prompt: string }, []>(
+      "SELECT agent_id, description, responsibilities, boundaries, skills, working_style, extra_prompt FROM agent_personas ORDER BY agent_id",
+    ).all(),
   };
 }
 
-describe("persona-bearing role CRUD guards (WA-225)", () => {
+function seedAgentPersona(h: SeedHandle, fields: Partial<Record<"description" | "responsibilities" | "boundaries" | "skills" | "working_style" | "extra_prompt", string>>): void {
+  const ws = daemon!.state.workspaces.get(h.wsId)!;
+  const now = new Date().toISOString();
+  ws.db.run(
+    `INSERT INTO agent_personas (agent_id, description, responsibilities, boundaries, skills, working_style, extra_prompt, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      h.agentId,
+      fields.description ?? "",
+      fields.responsibilities ?? "",
+      fields.boundaries ?? "",
+      fields.skills ?? "",
+      fields.working_style ?? "",
+      fields.extra_prompt ?? "",
+      now,
+      now,
+    ],
+  );
+}
+
+describe("persona-bearing role CRUD guards (WA-225/WA-226)", () => {
   test("POST /roles-by-id rolls back an over-hard-cap persona create", async () => {
     const h = await startWithSeededAgent();
     const before = rolePersistenceSnapshot(h);
@@ -130,6 +155,64 @@ describe("persona-bearing role CRUD guards (WA-225)", () => {
     const afterList = await fetch(`${h.base}/roles-by-id`).then((r) => r.json()) as RoleCrudBody;
     expect(afterList.roles).toEqual(beforeList.roles);
     expect(afterList.roles?.some((role) => role.name === "bad-persona-agent")).toBe(false);
+  });
+
+  test("PATCH /roles-by-id rolls back rename and persona when host validation fails", async () => {
+    const h = await startWithSeededAgent();
+    seedAgentPersona(h, { description: "before persona" });
+    const before = rolePersistenceSnapshot(h);
+
+    const res = await fetch(`${h.base}/roles-by-id/${encodeURIComponent(h.agentId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "renamed", host: "bogus-host", persona: { description: "after persona" } }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json() as RoleCrudBody;
+    expect(body.error).toContain("Invalid host type");
+    expect(rolePersistenceSnapshot(h)).toEqual(before);
+  });
+
+  test("PATCH /roles-by-id rolls back rename and host when persona persistence throws", async () => {
+    const h = await startWithSeededAgent();
+    seedAgentPersona(h, { description: "before persona" });
+    const before = rolePersistenceSnapshot(h);
+    const ws = daemon!.state.workspaces.get(h.wsId)!;
+    ws.db.run("CREATE TEMP TRIGGER fail_agent_persona_insert BEFORE INSERT ON agent_personas BEGIN SELECT RAISE(ABORT, 'persona persistence failed'); END");
+    ws.db.run("CREATE TEMP TRIGGER fail_agent_persona_update BEFORE UPDATE ON agent_personas BEGIN SELECT RAISE(ABORT, 'persona persistence failed'); END");
+
+    const res = await fetch(`${h.base}/roles-by-id/${encodeURIComponent(h.agentId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "renamed", host: "codex", persona: { description: "after persona" } }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json() as RoleCrudBody;
+    expect(body.error).toContain("persona persistence failed");
+    expect(rolePersistenceSnapshot(h)).toEqual(before);
+  });
+
+  test("PATCH /roles-by-id applies rename, host, and persona together on the happy path", async () => {
+    const h = await startWithSeededAgent();
+
+    const res = await fetch(`${h.base}/roles-by-id/${encodeURIComponent(h.agentId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "beta", host: "codex", persona: { description: "beta persona", working_style: "focused" } }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as RoleCrudBody;
+    expect(body.role).toMatchObject({
+      id: h.agentId,
+      name: "beta",
+      hostDefault: "codex",
+      defaultHostType: "codex",
+      persona: { description: "beta persona", working_style: "focused" },
+    });
+    expect(rolePersistenceSnapshot(h)).toEqual({
+      agents: [{ id: h.agentId, repo_id: h.repoId, name: "beta", host_default: "codex", default_host_type: "codex" }],
+      personas: [{ agent_id: h.agentId, description: "beta persona", responsibilities: "", boundaries: "", skills: "", working_style: "focused", extra_prompt: "" }],
+    });
   });
 
   test("persona create and patch reject missing auth, bad CSRF, and wrong Origin", async () => {
