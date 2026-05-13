@@ -2066,6 +2066,14 @@ test("EP-004 WA-015: unified outside-click + Escape dismiss registry covers ever
   expect(messagesSource).toContain("rootSelector: '.channel-export-menu'");
 });
 
+test("WA-227 HTTP terminal input fallback queues per role", () => {
+  expect(clientSource).toContain('import { enqueueSerial } from "./serial-queue.ts";');
+  expect(clientSource).toContain("const terminalInputQueues = Object.create(null);");
+  expect(clientSource).toContain("return enqueueSerial(terminalInputQueues, role, () => sendTerminalInputImpl(role, value, raw));");
+  expect(clientSource).toContain("async function sendTerminalInputImpl(role, value, raw = false)");
+  expect(clientSource).toContain("workspaceFetch('/roles-by-id/' + encodeURIComponent(target.id) + '/input'");
+});
+
 test("EP-010 WA-042: TUI Quick Prompts toolbar inserts without newline", () => {
   expect(clientSource).toContain("let quickPrompts = null;");
   expect(clientSource).toContain("function tuiBarPromptsControl(roleName)");

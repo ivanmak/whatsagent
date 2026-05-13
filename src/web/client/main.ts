@@ -34,6 +34,7 @@ import { installMessages } from "./messages.ts";
 import { installNotifications } from "./notifications.ts";
 import { identiconFor } from "./identicon.ts";
 import { renderSafeMarkdownHtml } from "./markdown.ts";
+import { enqueueSerial } from "./serial-queue.ts";
 import { SpecialKeysOverlay } from "./special-keys-overlay.ts";
 import { TerminalController } from "./terminal-controller.ts";
 import { installTruncateTitleFallback, truncatedAttrs } from "./truncate-tooltip.ts";
@@ -205,6 +206,7 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
     let lastTerminalSizeSent = '';
     const terminalCursors = {};
     const terminalSessions = {};
+    const terminalInputQueues = Object.create(null);
     let terminalController = null;
     let specialKeysOverlay = null;
     function currentTuiRedrawSettings() {
@@ -2178,6 +2180,10 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
     async function sendTerminalInput(value, raw = false) {
       const role = activeTerminalRole();
       if (!role || !value) return;
+      return enqueueSerial(terminalInputQueues, role, () => sendTerminalInputImpl(role, value, raw));
+    }
+
+    async function sendTerminalInputImpl(role, value, raw = false) {
       if (!runnerFor(role)) {
         handleTerminalInputRejected(role, { status: 'offline' });
         return;
