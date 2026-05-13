@@ -193,7 +193,7 @@ export interface WhatsAgentPiExtensionState {
   pushController: PiPushController | null;
 }
 
-const PI_DELIVERY_NOTE = `\nDELIVERY ON THIS SIDE (Pi):\n\nPi receives WhatsAgent tools through this extension. Live messages may surface as a body-free follow-up signal ("WhatsAgent inbox has N item(s). Call check_messages now.") via Pi's user-message queue. The signal carries no message body — call check_messages to get the audited WHATSAGENT INBOX envelope. If you miss the signal, the row stays recoverable until the next check_messages.\n\nOn launch, call whoami, list_peers, check_messages, and set_summary before starting substantive work. On every later user turn, call check_messages before answering or changing files. Reply only when substantive; do not auto-acknowledge.\n`;
+const PI_DELIVERY_NOTE = `\nDELIVERY ON THIS SIDE (Pi):\n\nPi receives WhatsAgent tools through this extension. Live messages may surface as a body-free follow-up signal ("WhatsAgent inbox has N item(s). Call check_messages now.") via Pi's user-message queue. The signal carries no message body — call check_messages to get the audited WHATSAGENT INBOX envelope.\n\nSignal coalescing (WA-228): WhatsAgent fires at most one inbox signal at a time and waits for you to drain the inbox before sending another. If you ignore a signal and return without calling check_messages, the controller may re-fire after a delay, but during a long-running turn no further signals will arrive — they all collapse into the single pending signal. Practical consequence: do not assume "another nudge will come soon". When you see an inbox signal, call check_messages this turn, before continuing the substantive work. A single check_messages call drains every queued item, so spending one tool call there is cheaper than chasing missed rows turns later.\n\nOn launch, call whoami, list_peers, check_messages, and set_summary before starting substantive work. On every later user turn, call check_messages before answering or changing files. Reply only when substantive; do not auto-acknowledge.\n`;
 
 function piGuidanceText(): string {
   return `${WHATSAGENT_COLLEAGUE_PROTOCOL.trimEnd()}\n${PI_DELIVERY_NOTE}`;
@@ -293,12 +293,27 @@ interface PiPushControllerOptions {
    * surfaced in the next emitted log via a "(suppressed N ...)" suffix.
    */
   errorLogIntervalMs?: number;
+  /**
+   * WA-228 drain window: consecutive ms of empty `pollMessages` results
+   * required to clear `pendingSignal`. "Empty" means DB-empty
+   * (`messages.length === 0`), not LRU-empty — drain implies the agent
+   * acked via check_messages, not that the controller has already
+   * signaled every row. Defaults to 8000ms.
+   */
+  minDrainMs?: number;
+  /**
+   * WA-228 refire failsafe: when `pendingSignal` has been outstanding for
+   * this many ms AND no agent turn is currently active, fire one more
+   * signal even though we have not observed drain. Guards against the
+   * agent silently dropping the first signal. Defaults to 30000ms.
+   */
+  refireMs?: number;
   now?: () => number;
   logError?: (message: string) => void;
 }
 
 /**
- * Pi follow-up push controller. WA-PI-4.
+ * Pi follow-up push controller. WA-PI-4 + WA-228.
  *
  * Behavior:
  * - Polls `tools.pollMessages(50)` on a bounded interval (default 1000 ms,
@@ -310,6 +325,22 @@ interface PiPushControllerOptions {
  *                        { deliverAs: "followUp" });
  *   The signal text NEVER includes message bodies, sender text, envelope
  *   text, Kanban details, channel body, or launch token values.
+ * - WA-228 signal coalescing + turn-liveness gate: once a signal lands,
+ *   `pendingSignal` blocks further signals until one of:
+ *   - DB drain: `tools.pollMessages` returns an empty list for at least
+ *     `minDrainMs` while no agent turn is active (the agent acked via
+ *     check_messages, which transitions rows out of pending+pushed). The
+ *     drain test deliberately uses `messages.length === 0`, NOT
+ *     `fresh.length === 0`, so LRU-filtered rows that are still pending
+ *     in the DB do not falsely trigger drain.
+ *   - Refire failsafe: `pendingSignal` has been outstanding for
+ *     `refireMs` AND no agent turn is active. Fires one fresh signal in
+ *     case the prior one was dropped by the runtime.
+ * - WA-228 turn-liveness: `pi.on("agent_start")` flips `agentTurnActive`
+ *   true; `pi.on("agent_end")` flips it false. While true, drain progress
+ *   and the refire failsafe pause. New fresh rows arriving mid-turn are
+ *   silently absorbed into the LRU (and direct/broadcast marked pushed)
+ *   so the next pollOnce after the turn ends does not double-signal.
  * - On successful signal, marks direct + broadcast rows as `pushed` via
  *   `tools.markMessagesPushed(messageIds)`. Channel + Kanban rows are
  *   intentionally left pending — their delivery cursors live elsewhere
@@ -318,7 +349,7 @@ interface PiPushControllerOptions {
  *   `markDirectPushed` filter in `src/integrations/opencode-plugin.ts:488-495`.
  * - Failure paths are body-free:
  *   - `sendUserMessage` throws → keep rows OUT of the LRU so the next
- *     poll retries.
+ *     poll retries; do not flip `pendingSignal`.
  *   - `markMessagesPushed` throws after a successful signal → keep rows
  *     IN the LRU (avoid double-signal); log body-free metadata only.
  *   - Errors logged via `logError` carry only message ids and counts;
@@ -328,6 +359,8 @@ export function createPiPushController(tools: AgentTools, pi: PiExtensionApi, op
   const intervalMs = Math.max(250, options.pollIntervalMs ?? 1000);
   const maxBackoffMs = Math.max(intervalMs, options.maxBackoffMs ?? 30_000);
   const errorLogIntervalMs = Math.max(0, options.errorLogIntervalMs ?? 60_000);
+  const minDrainMs = Math.max(0, options.minDrainMs ?? 8_000);
+  const refireMs = Math.max(0, options.refireMs ?? 30_000);
   const now = options.now ?? (() => Date.now());
   const logError = options.logError ?? ((msg: string) => console.error(msg));
   const pushed = new LruSet(defaultPushSeenCapacity());
@@ -339,6 +372,20 @@ export function createPiPushController(tools: AgentTools, pi: PiExtensionApi, op
   let lastErrorMessage = "";
   let lastErrorLoggedAt = Number.NEGATIVE_INFINITY;
   let suppressedErrorCount = 0;
+  // WA-228 state.
+  let pendingSignal = false;
+  let lastSignalAt = Number.NEGATIVE_INFINITY;
+  let agentTurnActive = false;
+  let drainStartedAt: number | null = null;
+
+  pi.on("agent_start", () => { agentTurnActive = true; });
+  pi.on("agent_end", () => {
+    agentTurnActive = false;
+    // Reset drain progress so the post-turn window starts fresh; agent
+    // may not have acked, in which case the next poll's DB result will
+    // immediately abort drain anyway.
+    drainStartedAt = null;
+  });
 
   const signalText = (count: number): string => `WhatsAgent inbox has ${count} item${count === 1 ? "" : "s"}. Call check_messages now.`;
   const stopController = (): void => {
@@ -350,6 +397,16 @@ export function createPiPushController(tools: AgentTools, pi: PiExtensionApi, op
     }
   };
 
+  const markDirectBroadcastPushed = async (rows: MessageRow[]): Promise<void> => {
+    const ids = rows.filter((m) => m.delivery_kind === "direct" || m.delivery_kind === "broadcast").map((m) => m.id);
+    if (ids.length === 0) return;
+    try {
+      await tools.markMessagesPushed(ids);
+    } catch (err) {
+      logError(`[whatsagent/pi-push] markMessagesPushed failed for ids=[${ids.join(",")}]: ${asErrorMessage(err)}`);
+    }
+  };
+
   const pollOnce = async (): Promise<number> => {
     if (inflight) return 0;
     inflight = true;
@@ -357,35 +414,66 @@ export function createPiPushController(tools: AgentTools, pi: PiExtensionApi, op
       const polled = await tools.pollMessages(50) as { messages?: MessageRow[] };
       if (piRef === null) return 0;
       const messages = Array.isArray(polled.messages) ? polled.messages : [];
-      const fresh = messages.filter((m) => !pushed.has(messageKey(m)));
-      if (fresh.length === 0) return 0;
-      const currentPi = piRef;
-      if (currentPi === null) return 0;
-      try {
-        await currentPi.sendUserMessage(signalText(fresh.length), { deliverAs: "followUp" });
-      } catch (err) {
-        // Signal failed; do NOT add to LRU. Stop the scheduled controller
-        // and clear piRef because stale Pi session-bound references keep
-        // throwing after session replacement / shutdown.
-        stopController();
-        logError(`[whatsagent/pi-push] sendUserMessage failed for ${fresh.length} row(s): ${asErrorMessage(err)}`);
+      const time = now();
+
+      // DB-empty: candidate drain. Only counts toward drain when a signal
+      // is outstanding AND no turn is active.
+      if (messages.length === 0) {
+        if (pendingSignal && !agentTurnActive) {
+          if (drainStartedAt === null) {
+            drainStartedAt = time;
+          } else if (time - drainStartedAt >= minDrainMs) {
+            pendingSignal = false;
+            drainStartedAt = null;
+          }
+        } else {
+          drainStartedAt = null;
+        }
         return 0;
       }
-      // Signal landed: capture in LRU before mark-pushed so a markPushed
-      // failure cannot trigger a duplicate sendUserMessage on retry.
-      for (const m of fresh) pushed.add(messageKey(m));
-      const directOrBroadcast = fresh.filter((m) => m.delivery_kind === "direct" || m.delivery_kind === "broadcast").map((m) => m.id);
-      if (directOrBroadcast.length > 0) {
-        try {
-          await tools.markMessagesPushed(directOrBroadcast);
-        } catch (err) {
-          // Mark-pushed failure: keep LRU as-is so we don't re-signal.
-          // Log body-free metadata only; the daemon-side mark-read cursor
-          // will catch up on the agent's next check_messages.
-          logError(`[whatsagent/pi-push] markMessagesPushed failed for ids=[${directOrBroadcast.join(",")}]: ${asErrorMessage(err)}`);
-        }
+
+      // DB has rows → drain progress aborts.
+      drainStartedAt = null;
+      const fresh = messages.filter((m) => !pushed.has(messageKey(m)));
+      const shouldRefire = pendingSignal && !agentTurnActive && time - lastSignalAt >= refireMs;
+
+      // Coalesce gate: signal already pending and not yet eligible for
+      // refire. Absorb any newly-fresh rows so they cannot retrigger a
+      // signal once `pendingSignal` clears.
+      if (pendingSignal && !shouldRefire) {
+        if (fresh.length === 0) return 0;
+        for (const m of fresh) pushed.add(messageKey(m));
+        await markDirectBroadcastPushed(fresh);
+        return 0;
       }
-      return fresh.length;
+
+      // No outstanding signal AND nothing new to flag → nothing to do.
+      if (fresh.length === 0 && !shouldRefire) return 0;
+
+      const currentPi = piRef;
+      if (currentPi === null) return 0;
+      const signalCount = fresh.length > 0 ? fresh.length : messages.length;
+      try {
+        await currentPi.sendUserMessage(signalText(signalCount), { deliverAs: "followUp" });
+      } catch (err) {
+        // Signal failed; do NOT add to LRU, do NOT flip pendingSignal.
+        // Stop the scheduled controller and clear piRef because stale Pi
+        // session-bound references keep throwing after session
+        // replacement / shutdown.
+        stopController();
+        logError(`[whatsagent/pi-push] sendUserMessage failed for ${signalCount} row(s): ${asErrorMessage(err)}`);
+        return 0;
+      }
+
+      // Signal landed: flip gate, capture in LRU before mark-pushed so a
+      // markPushed failure cannot trigger a duplicate sendUserMessage on
+      // retry.
+      pendingSignal = true;
+      lastSignalAt = time;
+      drainStartedAt = null;
+      for (const m of fresh) pushed.add(messageKey(m));
+      await markDirectBroadcastPushed(fresh);
+      return signalCount;
     } finally {
       inflight = false;
     }

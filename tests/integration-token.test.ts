@@ -975,9 +975,13 @@ interface FakePiApi {
   tools: Map<string, FakePiToolDefinition>;
   beforeAgentStart: Array<(event: { systemPrompt: string }) => Promise<{ systemPrompt?: string }> | { systemPrompt?: string }>;
   sessionShutdown: Array<(event?: { reason?: string }) => Promise<void> | void>;
+  agentStart: Array<(event?: unknown) => unknown>;
+  agentEnd: Array<(event?: unknown) => unknown>;
   sendUserMessageCalls: Array<{ content: string; options?: { deliverAs?: "steer" | "followUp" } }>;
   /** Override on a per-test basis to simulate Pi-side failures. */
   sendUserMessageImpl: (content: string, options?: { deliverAs?: "steer" | "followUp" }) => Promise<void> | void;
+  fireAgentStart(): void;
+  fireAgentEnd(): void;
   asPiExtensionApi(): {
     registerTool: (definition: FakePiToolDefinition) => void;
     on: (event: string, handler: (e?: unknown) => unknown) => void;
@@ -989,19 +993,27 @@ function fakePiApi(): FakePiApi {
   const tools = new Map<string, FakePiToolDefinition>();
   const beforeAgentStart: FakePiApi["beforeAgentStart"] = [];
   const sessionShutdown: FakePiApi["sessionShutdown"] = [];
+  const agentStart: FakePiApi["agentStart"] = [];
+  const agentEnd: FakePiApi["agentEnd"] = [];
   const sendUserMessageCalls: FakePiApi["sendUserMessageCalls"] = [];
   const api: FakePiApi = {
     tools,
     beforeAgentStart,
     sessionShutdown,
+    agentStart,
+    agentEnd,
     sendUserMessageCalls,
     sendUserMessageImpl: () => undefined,
+    fireAgentStart() { for (const h of agentStart) h(); },
+    fireAgentEnd() { for (const h of agentEnd) h(); },
     asPiExtensionApi() {
       return {
         registerTool: (definition) => { tools.set(definition.name, definition); },
         on: (event, handler) => {
           if (event === "before_agent_start") beforeAgentStart.push(handler as (e: { systemPrompt: string }) => Promise<{ systemPrompt?: string }> | { systemPrompt?: string });
           if (event === "session_shutdown") sessionShutdown.push(handler as (e?: { reason?: string }) => Promise<void> | void);
+          if (event === "agent_start") agentStart.push(handler);
+          if (event === "agent_end") agentEnd.push(handler);
         },
         sendUserMessage: async (content, options) => {
           sendUserMessageCalls.push({ content, options });
@@ -1234,14 +1246,162 @@ test("EP-031 review fix: LRU keys are compound (delivery_kind + channel_id + id)
   const pi = fakePiApi();
   // Direct row and channel row share numeric id=42 (live in different tables;
   // legitimate per the schema). Pre-fix `String(m.id)` would have treated the
-  // second poll's channel row as already-seen and silently swallowed it.
+  // second batch's channel row as already-seen and silently swallowed it.
+  // WA-228: drain the first signal before the second batch so the coalesce
+  // gate releases — the cross-table-key property is the assertion under test.
   const directDup = makeMessageRow(42, "direct");
   const channelDup = { ...makeMessageRow(42, "channel"), channel_id: "general" } as MessageRow;
-  const { tools } = fakeToolsForPush([[directDup], [channelDup]]);
-  const controller = createPiPushController(tools, pi.asPiExtensionApi());
+  const { tools } = fakeToolsForPush([[directDup], [], [], [channelDup]]);
+  let clock = 0;
+  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock, minDrainMs: 1_000 });
   expect(await controller.pollOnce()).toBe(1);
+  clock = 100;
+  expect(await controller.pollOnce()).toBe(0); // empty poll → drainStartedAt = 100
+  clock = 1_500;
+  expect(await controller.pollOnce()).toBe(0); // 1400ms elapsed since drain start → clears pendingSignal
+  expect(await controller.pollOnce()).toBe(1); // channel key distinct from direct → fresh signal
+  expect(pi.sendUserMessageCalls).toHaveLength(2);
+});
+
+test("WA-228 coalesce: second batch of fresh rows mid-pending-signal is absorbed (no second sendUserMessage)", async () => {
+  const { createPiPushController } = await import("../src/integrations/pi-extension.ts");
+  const pi = fakePiApi();
+  const batch1 = [makeMessageRow(701, "direct")];
+  const batch2 = [makeMessageRow(702, "direct"), makeMessageRow(703, "channel")];
+  const { tools, calls } = fakeToolsForPush([batch1, batch2]);
+  let clock = 0;
+  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock, minDrainMs: 5_000, refireMs: 30_000 });
+  expect(await controller.pollOnce()).toBe(1);
+  clock = 1_000; // well below refireMs, still pendingSignal
+  expect(await controller.pollOnce()).toBe(0);
+  // Only first batch's signal fired; second batch absorbed into LRU.
+  expect(pi.sendUserMessageCalls).toHaveLength(1);
+  // Second batch's direct row was still markedPushed even though signal was suppressed.
+  expect(calls.markMessagesPushed.flat().sort()).toEqual([701, 702]);
+});
+
+test("WA-228 drain: empty pollMessages for minDrainMs clears pendingSignal so the next fresh row fires a new signal", async () => {
+  const { createPiPushController } = await import("../src/integrations/pi-extension.ts");
+  const pi = fakePiApi();
+  const { tools } = fakeToolsForPush([
+    [makeMessageRow(801, "direct")],
+    [],
+    [],
+    [makeMessageRow(802, "direct")],
+  ]);
+  let clock = 0;
+  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock, minDrainMs: 5_000 });
+  expect(await controller.pollOnce()).toBe(1); // signal #1
+  clock = 100;
+  expect(await controller.pollOnce()).toBe(0); // empty → drainStartedAt = 100
+  clock = 6_000;
+  expect(await controller.pollOnce()).toBe(0); // 5900ms elapsed since drain start → clears pendingSignal
+  expect(await controller.pollOnce()).toBe(1); // pendingSignal=false now → signal #2 fires
+  expect(pi.sendUserMessageCalls).toHaveLength(2);
+});
+
+test("WA-228 drain: DB-empty alone (with no time progress) does NOT clear pendingSignal", async () => {
+  const { createPiPushController } = await import("../src/integrations/pi-extension.ts");
+  const pi = fakePiApi();
+  const { tools } = fakeToolsForPush([
+    [makeMessageRow(810, "direct")],
+    [],
+    [],
+    [makeMessageRow(811, "direct")],
+  ]);
+  let clock = 0;
+  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock, minDrainMs: 5_000 });
+  expect(await controller.pollOnce()).toBe(1);
+  clock = 100; expect(await controller.pollOnce()).toBe(0); // drain starts
+  clock = 200; expect(await controller.pollOnce()).toBe(0); // still draining (<5s)
+  // Fourth poll: a new fresh row arrives but pendingSignal still set → coalesce suppresses.
+  expect(await controller.pollOnce()).toBe(0);
+  expect(pi.sendUserMessageCalls).toHaveLength(1);
+});
+
+test("WA-228 drain: LRU-filtered rows (fresh.length=0 but messages.length>0) do NOT count as drain progress", async () => {
+  const { createPiPushController } = await import("../src/integrations/pi-extension.ts");
+  const pi = fakePiApi();
+  const recurring = makeMessageRow(820, "channel");
+  // First poll signals. Subsequent polls return the SAME row (channel rows
+  // remain pending until check_messages cursor moves). LRU filters it. The
+  // drain logic must NOT advance — agent has not acked.
+  const { tools } = fakeToolsForPush([
+    [recurring], [recurring], [recurring], [recurring], [recurring],
+  ]);
+  let clock = 0;
+  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock, minDrainMs: 1_000 });
+  expect(await controller.pollOnce()).toBe(1);
+  clock = 5_000;
+  expect(await controller.pollOnce()).toBe(0);
+  clock = 10_000;
+  expect(await controller.pollOnce()).toBe(0);
+  // No additional signal should have fired; pendingSignal still set since
+  // messages.length stayed > 0 the whole time.
+  expect(pi.sendUserMessageCalls).toHaveLength(1);
+});
+
+test("WA-228 refire: pendingSignal outstanding past refireMs with rows in DB and no active turn fires one more signal", async () => {
+  const { createPiPushController } = await import("../src/integrations/pi-extension.ts");
+  const pi = fakePiApi();
+  const sticky = makeMessageRow(830, "channel");
+  // DB keeps returning the same row (e.g. agent dropped the first signal).
+  const { tools } = fakeToolsForPush([[sticky], [sticky], [sticky]]);
+  let clock = 0;
+  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock, minDrainMs: 5_000, refireMs: 30_000 });
+  expect(await controller.pollOnce()).toBe(1); // initial
+  clock = 15_000;
+  expect(await controller.pollOnce()).toBe(0); // pre-refire, LRU absorbs (already in LRU)
+  clock = 31_000;
+  // Refire: no fresh rows (still same id in LRU) but messages.length>0 → signal count from messages.
   expect(await controller.pollOnce()).toBe(1);
   expect(pi.sendUserMessageCalls).toHaveLength(2);
+  expect(pi.sendUserMessageCalls[1]!.content).toBe("WhatsAgent inbox has 1 item. Call check_messages now.");
+});
+
+test("WA-228 turn-liveness: agent_start suppresses refire even when pendingSignal age exceeds refireMs", async () => {
+  const { createPiPushController } = await import("../src/integrations/pi-extension.ts");
+  const pi = fakePiApi();
+  const sticky = makeMessageRow(840, "channel");
+  const { tools } = fakeToolsForPush([[sticky], [sticky], [sticky]]);
+  let clock = 0;
+  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock, refireMs: 10_000, minDrainMs: 5_000 });
+  expect(await controller.pollOnce()).toBe(1); // initial signal
+  pi.fireAgentStart(); // agent picked it up, mid-turn
+  clock = 20_000; // well past refireMs
+  expect(await controller.pollOnce()).toBe(0); // mid-turn → refire suppressed
+  expect(pi.sendUserMessageCalls).toHaveLength(1);
+  pi.fireAgentEnd();
+  // Turn ended without ack; next poll still has sticky row in DB. Refire condition now met.
+  clock = 21_000;
+  expect(await controller.pollOnce()).toBe(1);
+  expect(pi.sendUserMessageCalls).toHaveLength(2);
+});
+
+test("WA-228 turn-liveness: drain progress also pauses while agent turn is active", async () => {
+  const { createPiPushController } = await import("../src/integrations/pi-extension.ts");
+  const pi = fakePiApi();
+  const { tools } = fakeToolsForPush([
+    [makeMessageRow(850, "direct")],
+    [], [], [],
+    [makeMessageRow(851, "direct")],
+  ]);
+  let clock = 0;
+  const controller = createPiPushController(tools, pi.asPiExtensionApi(), { now: () => clock, minDrainMs: 1_000 });
+  expect(await controller.pollOnce()).toBe(1); // signal #1
+  pi.fireAgentStart();
+  clock = 5_000;
+  expect(await controller.pollOnce()).toBe(0); // empty + turn active → no drain progress
+  clock = 10_000;
+  expect(await controller.pollOnce()).toBe(0);
+  // Now end the turn. Drain progress must start fresh from 0, not from the
+  // 5s/10s polls above.
+  pi.fireAgentEnd();
+  expect(await controller.pollOnce()).toBe(0); // drainStartedAt = 10_000
+  clock = 10_500; // 500ms after drain started — below minDrainMs
+  // Fresh row arrives before drain elapsed → coalesce, no second signal.
+  expect(await controller.pollOnce()).toBe(0);
+  expect(pi.sendUserMessageCalls).toHaveLength(1);
 });
 
 test("EP-031 WA-PI-4: signal text never includes message body, sender, or envelope markers", async () => {
