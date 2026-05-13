@@ -2066,12 +2066,14 @@ test("EP-004 WA-015: unified outside-click + Escape dismiss registry covers ever
   expect(messagesSource).toContain("rootSelector: '.channel-export-menu'");
 });
 
-test("WA-227 HTTP terminal input fallback queues per role", () => {
-  expect(clientSource).toContain('import { enqueueSerial } from "./serial-queue.ts";');
+test("WA-227 HTTP terminal input fallback queues per workspace role session", () => {
+  expect(clientSource).toContain('import { enqueueTerminalInputFallback } from "./terminal-input-fallback.ts";');
   expect(clientSource).toContain("const terminalInputQueues = Object.create(null);");
-  expect(clientSource).toContain("return enqueueSerial(terminalInputQueues, role, () => sendTerminalInputImpl(role, value, raw));");
-  expect(clientSource).toContain("async function sendTerminalInputImpl(role, value, raw = false)");
-  expect(clientSource).toContain("workspaceFetch('/roles-by-id/' + encodeURIComponent(target.id) + '/input'");
+  expect(clientSource).toContain("fallbackSendInput: (role, data) => { void sendTerminalInput(data, true, role); }");
+  expect(clientSource).toContain("return enqueueTerminalInputFallback(terminalInputQueues, {");
+  expect(clientSource).toContain("currentWorkspaceId: () => state.currentWorkspace?.id || null");
+  expect(clientSource).toContain("workspaceGeneration: () => state.workspaceGeneration");
+  expect(clientSource).toContain("postInput: (workspaceId, roleId, data) => workspaceFetchFor(workspaceId, '/roles-by-id/' + encodeURIComponent(roleId) + '/input'");
 });
 
 test("EP-010 WA-042: TUI Quick Prompts toolbar inserts without newline", () => {

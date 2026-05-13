@@ -3256,11 +3256,17 @@ async function terminalWsPump(socket: ServerWebSocket<TerminalWsData>): Promise<
   }
 }
 
-async function terminalWsInput(socket: ServerWebSocket<TerminalWsData>, ws: WorkspaceState, data: string): Promise<void> {
+async function terminalWsInput(socket: ServerWebSocket<TerminalWsData>, ws: WorkspaceState, data: string, expectedSessionId?: string): Promise<void> {
   const runner = await runnerStatusForRoleId(socket.data.state, ws, socket.data.roleId);
   const controlUrl = runner ? runnerControlUrl(runner) : null;
   if (!runner || !runner.reachable || !controlUrl) {
     wsSend(socket, { type: "runner_status", status: runner?.status ?? "offline", exitCode: runner?.exit_code, exitSignal: runner?.exit_signal, sessionId: runner?.session_id });
+    return;
+  }
+  if (expectedSessionId && runner.session_id !== expectedSessionId) {
+    socket.data.state.logger.info("terminal.input_dropped_stale_session", { role: runner.role, displayId: runner.display_id, expectedSessionId, currentSessionId: runner.session_id });
+    wsSend(socket, { type: "runner_status", status: runner.status ?? "running", exitCode: runner.exit_code, exitSignal: runner.exit_signal, sessionId: runner.session_id });
+    invalidateWsRunnerCache(socket);
     return;
   }
   const res = await fetchRunnerControl(runner, "/input", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data }) });
@@ -3285,11 +3291,12 @@ async function terminalWsMessage(socket: ServerWebSocket<TerminalWsData>, messag
   }
   if (payload.type === "input") {
     const data = payload.data ?? "";
+    const expectedSessionId = socket.data.cachedSessionId ?? socket.data.subscribedSessionId;
     const inputJob = (socket.data.inputChain ?? Promise.resolve())
       .catch(() => undefined)
       .then(async () => {
         if (socket.data.closed) return;
-        await terminalWsInput(socket, wsForSocket, data);
+        await terminalWsInput(socket, wsForSocket, data, expectedSessionId);
       });
     socket.data.inputChain = inputJob.catch(() => undefined);
     await inputJob;

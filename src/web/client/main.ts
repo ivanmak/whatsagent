@@ -34,7 +34,7 @@ import { installMessages } from "./messages.ts";
 import { installNotifications } from "./notifications.ts";
 import { identiconFor } from "./identicon.ts";
 import { renderSafeMarkdownHtml } from "./markdown.ts";
-import { enqueueSerial } from "./serial-queue.ts";
+import { enqueueTerminalInputFallback } from "./terminal-input-fallback.ts";
 import { SpecialKeysOverlay } from "./special-keys-overlay.ts";
 import { TerminalController } from "./terminal-controller.ts";
 import { installTruncateTitleFallback, truncatedAttrs } from "./truncate-tooltip.ts";
@@ -2097,7 +2097,7 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
         },
         onRunnerStatus: (role, body) => handleRunnerStatus(role, body),
         onSessionChange: (role, prev, next) => terminalDebugLog('session-change', { role, prevSessionId: prev || '', nextSessionId: next }),
-        fallbackSendInput: (role, data) => { void sendTerminalInput(data, true); },
+        fallbackSendInput: (role, data) => { void sendTerminalInput(data, true, role); },
         fontSize: () => terminalFontSize(),
         lineHeight: () => terminalLineHeight(),
         accentHex: () => getComputedStyle(document.documentElement).getPropertyValue('--accent-hex').trim() || '#a78bfa',
@@ -2177,26 +2177,17 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
     // WS path; this is invoked from the controller's fallbackSendInput
     // callback when the WS is not yet open (initial mount window) or
     // closed mid-runtime. Server's /input route accepts plain JSON.
-    async function sendTerminalInput(value, raw = false) {
-      const role = activeTerminalRole();
-      if (!role || !value) return;
-      return enqueueSerial(terminalInputQueues, role, () => sendTerminalInputImpl(role, value, raw));
-    }
-
-    async function sendTerminalInputImpl(role, value, raw = false) {
-      if (!runnerFor(role)) {
-        handleTerminalInputRejected(role, { status: 'offline' });
-        return;
-      }
-      const gen = state.workspaceGeneration;
-      const target = roleByAddress(role);
-      if (!target?.id) return;
-      const res = await workspaceFetch('/roles-by-id/' + encodeURIComponent(target.id) + '/input', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: raw ? value : value + NL }) }).catch(() => null);
-      if (gen !== state.workspaceGeneration) return;
-      if (!res?.ok) {
-        const body = res ? await res.json().catch(() => ({})) : {};
-        handleTerminalInputRejected(role, body);
-      }
+    async function sendTerminalInput(value, raw = false, roleOverride = null) {
+      return enqueueTerminalInputFallback(terminalInputQueues, {
+        activeRole: () => activeTerminalRole(),
+        currentWorkspaceId: () => state.currentWorkspace?.id || null,
+        workspaceGeneration: () => state.workspaceGeneration,
+        runnerFor: (role) => runnerFor(role),
+        roleByAddress: (role) => roleByAddress(role),
+        postInput: (workspaceId, roleId, data) => workspaceFetchFor(workspaceId, '/roles-by-id/' + encodeURIComponent(roleId) + '/input', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data }) }),
+        onRejected: (role, body) => handleTerminalInputRejected(role, body),
+        newline: NL,
+      }, value, raw, roleOverride);
     }
 
     // EP-029 T4: pollTerminal + scheduleTerminalPoll deleted —
