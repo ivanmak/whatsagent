@@ -166,12 +166,10 @@ let channelMessages = [];
 let channelSnapshot = '';
 let channelMessagesLoaded = false;
 let channelMessagesLoading = false;
-let channelMessagesOlderExhausted = false;
 let channelMessageError = '';
 let channelExportMenuOpen = false;
 let activeChannelThreadRootId = null;
 let channelNewMarker = { markerId: 0, count: 0 };
-const CHANNEL_MESSAGE_PAGE_SIZE = 500;
 
 // ---------- Drafts (WA-038) ----------
 // Per-thread composer drafts. In-memory only (no localStorage by design).
@@ -246,7 +244,6 @@ export function resetChannel() {
   channelSnapshot = '';
   channelMessagesLoaded = false;
   channelMessagesLoading = false;
-  channelMessagesOlderExhausted = false;
   channelMessageError = '';
   channelExportMenuOpen = false;
   activeChannelThreadRootId = null;
@@ -286,30 +283,6 @@ function maxChannelMessageId(items) {
   return (items || []).reduce((max, message) => Math.max(max, Number(message.id) || 0), 0);
 }
 
-function minChannelMessageId(items) {
-  let min = Infinity;
-  for (const message of items || []) {
-    const id = Number(message.id) || 0;
-    if (id > 0) min = Math.min(min, id);
-  }
-  return Number.isFinite(min) ? min : 0;
-}
-
-function sortChannelMessages(items) {
-  return (items || []).slice().sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
-}
-
-function mergeChannelMessages(...groups) {
-  const byId = new Map();
-  for (const group of groups) {
-    for (const message of group || []) {
-      const id = Number(message.id) || 0;
-      if (id > 0) byId.set(id, message);
-    }
-  }
-  return sortChannelMessages(Array.from(byId.values()));
-}
-
 function incomingChannelMessageCount(items) {
   return (items || []).filter(message => message.from_role_name).length;
 }
@@ -338,9 +311,6 @@ function installChannelNewMarkerScrollClear() {
   if (!body) return;
   body.addEventListener('scroll', () => {
     if (channelNewMarker.markerId && channelRootNearBottom()) clearChannelNewMarker();
-    if (body.scrollTop > 96 || channelMessagesLoading || channelMessagesOlderExhausted || !channelMessagesLoaded) return;
-    const beforeId = minChannelMessageId(channelMessages);
-    if (beforeId > 0) void loadChannelMessages({ beforeId, rerender: true, silent: true, scrollMode: 'preserve' });
   }, { passive: true });
 }
 
@@ -353,45 +323,23 @@ function jumpToChannelNewMarker(markerId) {
 async function loadChannelMessages(opts = {}) {
   if (!shouldPollWorkspace()) return false;
   if (channelMessagesLoading) return;
-  const beforeId = Math.floor(Number(opts.beforeId || 0));
-  if (beforeId > 0 && channelMessagesOlderExhausted) return false;
   const gen = getState().workspaceGeneration;
   channelMessagesLoading = true;
   const wasNearBottomBeforeLoad = channelRootNearBottom();
   let shouldRender = Boolean(opts.rerender);
   const wasNearBottom = channelRootNearBottom();
-  const prependScroll = beforeId > 0 ? (() => {
-    const el = $('messageThreadBody');
-    return el ? { scrollHeight: el.scrollHeight, scrollTop: el.scrollTop } : null;
-  })() : null;
   let stale = false;
   try {
-    const suffix = '/channel/messages?limit=' + CHANNEL_MESSAGE_PAGE_SIZE + (beforeId > 0 ? '&beforeId=' + encodeURIComponent(String(beforeId)) : '');
-    const res = await workspaceFetch(suffix);
-    const body = await res.json().catch(() => ({}));
+    const body = await workspaceFetch('/channel/messages?limit=500').then(r => r.json());
     if (gen !== getState().workspaceGeneration) { stale = true; return false; }
-    if (!res.ok || body.ok === false) throw new Error(body.error || 'Channel messages failed to load');
-    const fetched = Array.isArray(body.messages) ? body.messages : [];
+    const next = Array.isArray(body.messages) ? body.messages : [];
     const previousMaxId = maxChannelMessageId(channelMessages);
-    let next;
-    if (beforeId > 0) {
-      next = mergeChannelMessages(fetched, channelMessages);
-      channelMessagesOlderExhausted = fetched.length < CHANNEL_MESSAGE_PAGE_SIZE;
-    } else if (fetched.length < CHANNEL_MESSAGE_PAGE_SIZE) {
-      next = fetched;
-      channelMessagesOlderExhausted = true;
-    } else {
-      channelMessagesOlderExhausted = false;
-      const minLatestId = minChannelMessageId(fetched);
-      const olderMessages = minLatestId > 0 ? channelMessages.filter(message => (Number(message.id) || 0) < minLatestId) : [];
-      next = mergeChannelMessages(olderMessages, fetched);
-    }
     const nextSnapshot = channelSnapshotFor(next);
     if (opts.onlyIfChanged && nextSnapshot === channelSnapshot) {
       shouldRender = false;
       return;
     }
-    if (beforeId <= 0 && channelMessagesLoaded) {
+    if (channelMessagesLoaded) {
       const newMessages = next.filter(message => (Number(message.id) || 0) > previousMaxId);
       noteNavMessages(incomingChannelMessageCount(newMessages));
       markChannelNewMarker(newMessages, wasNearBottomBeforeLoad);
@@ -399,14 +347,14 @@ async function loadChannelMessages(opts = {}) {
     channelMessages = next;
     channelSnapshot = nextSnapshot;
     channelMessagesLoaded = true;
-    channelMessageError = '';
+    channelMessageError = body.ok === false ? (body.error || 'Channel messages failed to load') : '';
     clearMessages();
   } catch (e) {
     stale = gen !== getState().workspaceGeneration;
     if (!stale && !opts.silent) channelMessageError = String(e?.message || e);
   } finally {
     channelMessagesLoading = false;
-    if (!stale && shouldRender && getPage() === 'messages') callRenderMessages({ scrollMode: getPendingMessageScroll() || opts.scrollMode || 'preserve', wasNearBottom, prependScroll });
+    if (!stale && shouldRender && getPage() === 'messages') callRenderMessages({ scrollMode: getPendingMessageScroll() || 'preserve', wasNearBottom });
   }
 }
 
@@ -444,20 +392,12 @@ function renderChannelMessages(opts = {}) {
   setPendingMessageScroll('');
   const scrollMode = opts.scrollMode || 'preserve';
   const wasNearBottomFlag = opts.wasNearBottom ?? true;
-  if (opts.prependScroll) {
-    const snap = opts.prependScroll;
+  applyMessageScroll(scrollMode, wasNearBottomFlag);
+  if (scrollMode !== 'bottom' && !wasNearBottomFlag && previousRootScrollTop) {
     requestAnimationFrame(() => {
       const nextRoot = $('messageThreadBody');
-      if (nextRoot) nextRoot.scrollTop = Math.max(0, nextRoot.scrollHeight - snap.scrollHeight + snap.scrollTop);
+      if (nextRoot) nextRoot.scrollTop = previousRootScrollTop;
     });
-  } else {
-    applyMessageScroll(scrollMode, wasNearBottomFlag);
-    if (scrollMode !== 'bottom' && !wasNearBottomFlag && previousRootScrollTop) {
-      requestAnimationFrame(() => {
-        const nextRoot = $('messageThreadBody');
-        if (nextRoot) nextRoot.scrollTop = previousRootScrollTop;
-      });
-    }
   }
   const currentSidebarRootId = normalizeChannelMessageId(activeChannelThreadRootId);
   if (currentSidebarRootId) {

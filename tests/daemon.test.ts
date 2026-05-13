@@ -1127,7 +1127,7 @@ test("human-web direct messaging in star/p2p, rejected in channel (HW-DAEMON)", 
   }
 });
 
-test("web message history endpoints return latest pages and beforeId cursors", async () => {
+test("web DM history endpoint returns latest pages and beforeId cursor", async () => {
   const root = await tempProject();
   try {
     await initFleet(root);
@@ -1148,7 +1148,6 @@ test("web message history endpoints return latest pages and beforeId cursors", a
           body: `dm-${i}`,
           state: "delivered",
         });
-        postChannelMessage(db, { fromRoleId: architect.id, fromSessionId: null, body: `channel-${i}` });
       }
     } finally {
       db.close();
@@ -1161,11 +1160,6 @@ test("web message history endpoints return latest pages and beforeId cursors", a
       expect(latestDm.messages.map((m) => m.body)).toEqual(["dm-4", "dm-5", "dm-6"]);
       const olderDm = await fetch(`${daemon.url}${wsBase}/messages?limit=3&beforeId=${latestDm.messages[0]!.id}`).then((r) => r.json()) as { messages: Array<{ body: string }> };
       expect(olderDm.messages.map((m) => m.body)).toEqual(["dm-1", "dm-2", "dm-3"]);
-
-      const latestChannel = await fetch(`${daemon.url}${wsBase}/channel/messages?limit=3`).then((r) => r.json()) as { messages: Array<{ id: number; body: string }> };
-      expect(latestChannel.messages.map((m) => m.body)).toEqual(["channel-4", "channel-5", "channel-6"]);
-      const olderChannel = await fetch(`${daemon.url}${wsBase}/channel/messages?limit=3&beforeId=${latestChannel.messages[0]!.id}`).then((r) => r.json()) as { messages: Array<{ body: string }> };
-      expect(olderChannel.messages.map((m) => m.body)).toEqual(["channel-1", "channel-2", "channel-3"]);
     } finally {
       daemon.stop();
     }

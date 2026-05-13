@@ -3759,12 +3759,8 @@ async function postFleetChannelMessage(state: DaemonState, ws: WorkspaceState, i
 async function listFleetChannelMessages(state: DaemonState, ws: WorkspaceState, url: URL): Promise<Response> {
   const limit = tryParseInteger(url.searchParams.get("limit"), { min: 1, max: 500, default: 100 });
   if (limit instanceof Response) return limit;
-  const sinceId = tryParseInteger(url.searchParams.get("sinceId"), { min: 0, default: 0 });
-  if (sinceId instanceof Response) return sinceId;
-  const beforeId = tryParseInteger(url.searchParams.get("beforeId"), { min: 0, default: 0 });
-  if (beforeId instanceof Response) return beforeId;
   const db = ws.db;
-  return json({ ok: true, messages: listChannelMessages(db, { limit, sinceId, beforeId, latest: sinceId <= 0 }) });
+  return json({ ok: true, messages: listChannelMessages(db, { limit }) });
 }
 
 async function readAgentChannelMessages(state: DaemonState, ws: WorkspaceState, input: unknown): Promise<Response> {
