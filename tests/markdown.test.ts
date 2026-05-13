@@ -57,7 +57,8 @@ describe("renderSafeMarkdownHtml nested lists", () => {
     expect(latest).toBeTruthy();
     const html = render(latest!.bodyMarkdown);
 
-    expect(html).toContain("<li><strong>Persona profile per agent</strong><ul><li>Six freeform fields");
-    expect(html).not.toContain("<li><strong>Persona profile per agent</strong></li><li>Six freeform fields");
+    expect(html).toContain("<strong>Persona profile per agent</strong>");
+    expect(html).toMatch(/<strong>Persona profile per agent<\/strong>[^<]*<ul><li>/);
+    expect(html).not.toMatch(/<strong>Persona profile per agent<\/strong>[^<]*<\/li><li>Surfaced/);
   });
 });
