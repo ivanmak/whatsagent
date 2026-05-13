@@ -656,6 +656,8 @@ test("renderWebShell emits parseable dashboard JavaScript", () => {
   // WA-039: renderSafeMarkdown lives in main.ts; messages.ts proxies via ctx.
   expect(script).toContain("function renderSafeMarkdown(value)");
   expect(script).toContain("renderSafeMarkdownHtml(value, esc)");
+  expect(markdownSource).toContain("const listStack = [];");
+  expect(markdownSource).toContain("function renderListFrame(frame)");
   expect(markdownSource).toContain("export function renderMarkdownInline(value, esc)");
   expect(messagesSource).toContain("function renderSafeMarkdown(value) { return ctx().renderSafeMarkdown(value); }");
   expect(kanbanSource).toContain("function renderSafeMarkdown(value) { return ctx().renderSafeMarkdown(value); }");
