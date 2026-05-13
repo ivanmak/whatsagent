@@ -1127,6 +1127,53 @@ test("human-web direct messaging in star/p2p, rejected in channel (HW-DAEMON)", 
   }
 });
 
+test("web message history endpoints return latest pages and beforeId cursors", async () => {
+  const root = await tempProject();
+  try {
+    await initFleet(root);
+    const paths = fleetPaths(root);
+    const db = openFleetDb(paths.dbPath);
+    try {
+      migrate(db);
+      const architect = getRoleByName(db, "architect");
+      const serviceA = getRoleByName(db, "serviceA");
+      if (!architect || !serviceA) throw new Error("seed roles missing");
+      for (let i = 1; i <= 6; i += 1) {
+        insertMessage(db, {
+          threadId: "architect-serviceA",
+          fromRoleId: architect.id,
+          toRoleId: serviceA.id,
+          fromSessionId: null,
+          toSessionId: null,
+          body: `dm-${i}`,
+          state: "delivered",
+        });
+        postChannelMessage(db, { fromRoleId: architect.id, fromSessionId: null, body: `channel-${i}` });
+      }
+    } finally {
+      db.close();
+    }
+
+    const daemon = await startDaemon(root, { port: 0, consoleLogs: false });
+    try {
+      const wsBase = await currentWsBase(daemon.url);
+      const latestDm = await fetch(`${daemon.url}${wsBase}/messages?limit=3`).then((r) => r.json()) as { messages: Array<{ id: number; body: string }> };
+      expect(latestDm.messages.map((m) => m.body)).toEqual(["dm-4", "dm-5", "dm-6"]);
+      const olderDm = await fetch(`${daemon.url}${wsBase}/messages?limit=3&beforeId=${latestDm.messages[0]!.id}`).then((r) => r.json()) as { messages: Array<{ body: string }> };
+      expect(olderDm.messages.map((m) => m.body)).toEqual(["dm-1", "dm-2", "dm-3"]);
+
+      const latestChannel = await fetch(`${daemon.url}${wsBase}/channel/messages?limit=3`).then((r) => r.json()) as { messages: Array<{ id: number; body: string }> };
+      expect(latestChannel.messages.map((m) => m.body)).toEqual(["channel-4", "channel-5", "channel-6"]);
+      const olderChannel = await fetch(`${daemon.url}${wsBase}/channel/messages?limit=3&beforeId=${latestChannel.messages[0]!.id}`).then((r) => r.json()) as { messages: Array<{ body: string }> };
+      expect(olderChannel.messages.map((m) => m.body)).toEqual(["channel-1", "channel-2", "channel-3"]);
+    } finally {
+      daemon.stop();
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("channel policy delivers only online actionable messages while preserving history", async () => {
   const root = await tempProject();
   try {

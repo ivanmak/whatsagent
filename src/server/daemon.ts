@@ -3759,8 +3759,12 @@ async function postFleetChannelMessage(state: DaemonState, ws: WorkspaceState, i
 async function listFleetChannelMessages(state: DaemonState, ws: WorkspaceState, url: URL): Promise<Response> {
   const limit = tryParseInteger(url.searchParams.get("limit"), { min: 1, max: 500, default: 100 });
   if (limit instanceof Response) return limit;
+  const sinceId = tryParseInteger(url.searchParams.get("sinceId"), { min: 0, default: 0 });
+  if (sinceId instanceof Response) return sinceId;
+  const beforeId = tryParseInteger(url.searchParams.get("beforeId"), { min: 0, default: 0 });
+  if (beforeId instanceof Response) return beforeId;
   const db = ws.db;
-  return json({ ok: true, messages: listChannelMessages(db, { limit }) });
+  return json({ ok: true, messages: listChannelMessages(db, { limit, sinceId, beforeId, latest: sinceId <= 0 }) });
 }
 
 async function readAgentChannelMessages(state: DaemonState, ws: WorkspaceState, input: unknown): Promise<Response> {
@@ -3782,7 +3786,12 @@ async function readAgentChannelMessages(state: DaemonState, ws: WorkspaceState, 
 }
 
 async function listFleetMessages(state: DaemonState, ws: WorkspaceState, url: URL): Promise<Response> {
-  const limit = Number(url.searchParams.get("limit") ?? "100");
+  const limit = tryParseInteger(url.searchParams.get("limit"), { min: 1, max: 500, default: 100 });
+  if (limit instanceof Response) return limit;
+  const sinceId = tryParseInteger(url.searchParams.get("sinceId"), { min: 0, default: 0 });
+  if (sinceId instanceof Response) return sinceId;
+  const beforeId = tryParseInteger(url.searchParams.get("beforeId"), { min: 0, default: 0 });
+  if (beforeId instanceof Response) return beforeId;
   const roleAddr = url.searchParams.get("role");
   const db = ws.db;
   // EP-DEC-RUN WA-006 (advisor msg #28): accept UUID first, then displayId.
@@ -3793,7 +3802,7 @@ async function listFleetMessages(state: DaemonState, ws: WorkspaceState, url: UR
     else if (roleAddr.includes(":")) role = resolveRoleAddress(db, roleAddr);
   }
   if (roleAddr && !role) return json({ ok: false, error: `Unknown role: ${roleAddr}` }, { status: 404 });
-  return json({ ok: true, messages: listDbMessages(db, { roleId: role?.id, limit }) });
+  return json({ ok: true, messages: listDbMessages(db, { roleId: role?.id, limit, sinceId, beforeId, latest: sinceId <= 0 }) });
 }
 
 function parseSearchQueryInput(value: unknown): string | Response {

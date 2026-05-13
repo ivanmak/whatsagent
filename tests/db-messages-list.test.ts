@@ -43,8 +43,12 @@ describe("listMessages", () => {
         });
       }
 
+      const all = listMessages(ws.workspaceDb, { limit: 10, latest: false });
+      const beforeM5 = all.find((row) => row.body === "m5")!.id;
+
       expect(listMessages(ws.workspaceDb, { limit: 3 }).map((row) => row.body)).toEqual(["m3", "m4", "m5"]);
       expect(listMessages(ws.workspaceDb, { limit: 3, latest: false }).map((row) => row.body)).toEqual(["m1", "m2", "m3"]);
+      expect(listMessages(ws.workspaceDb, { beforeId: beforeM5, limit: 2 }).map((row) => row.body)).toEqual(["m3", "m4"]);
     } finally {
       ws.workspaceDb.close();
     }
@@ -70,10 +74,11 @@ describe("listMessages", () => {
       add("agent-2", agent.id);
       add("other-2", "human-web");
       add("agent-3", agent.id);
-      add("agent-4", agent.id);
+      const agent4 = add("agent-4", agent.id);
 
       expect(listMessages(ws.workspaceDb, { roleId: agent.id, limit: 2 }).map((row) => row.body)).toEqual(["agent-3", "agent-4"]);
       expect(listMessages(ws.workspaceDb, { roleId: agent.id, limit: 2, latest: false }).map((row) => row.body)).toEqual(["agent-1", "agent-2"]);
+      expect(listMessages(ws.workspaceDb, { roleId: agent.id, beforeId: agent4.id, limit: 2 }).map((row) => row.body)).toEqual(["agent-2", "agent-3"]);
     } finally {
       ws.workspaceDb.close();
     }

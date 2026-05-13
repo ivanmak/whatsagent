@@ -138,6 +138,7 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
     let messages = [];
     let messagesLoaded = false;
     let messagesLoading = false;
+    let messagesOlderExhausted = false;
     let messagesSnapshot = '';
     let optimisticMessageIds = new Set();
     let messageError = '';
@@ -236,6 +237,7 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
     let lastSoundPlayAt = 0;
     const previousRunnerStateForNotifs = {};
     const HUMAN_PEER = 'human-web';
+    const MESSAGE_HISTORY_PAGE_SIZE = 500;
     const MESSAGE_POLL_MS = 2000;
     const STATUS_POLL_MS = 3000;
     const PREF_STORAGE_KEY = 'whatsagent.ui.preferences';
@@ -365,6 +367,9 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
       if (!body) return;
       body.addEventListener('scroll', () => {
         if (dmNewMarker.threadKey === threadKey && isMessageThreadNearBottom()) clearDmNewMarker();
+        if (body.scrollTop > 96 || messagesLoading || messagesOlderExhausted || !messagesLoaded) return;
+        const beforeId = minMessageId(messages);
+        if (beforeId > 0) void loadMessages({ beforeId, rerender: true, silent: true, scrollMode: 'preserve' });
       }, { passive: true });
     }
 
@@ -669,9 +674,30 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
       return items.slice().sort((a, b) => directMessageId(a) - directMessageId(b));
     }
 
+    function mergeDirectMessageRows(...groups) {
+      const byId = new Map();
+      for (const group of groups) {
+        for (const message of group || []) {
+          const id = directMessageId(message);
+          if (id) byId.set(id, message);
+        }
+      }
+      return sortDirectMessages(Array.from(byId.values()));
+    }
+
+    function minMessageId(items) {
+      let min = Infinity;
+      for (const message of items || []) {
+        const id = directMessageId(message);
+        if (id) min = Math.min(min, id);
+      }
+      return Number.isFinite(min) ? min : 0;
+    }
+
     function clearDirectMessageCache() {
       messages = [];
       messagesLoaded = false;
+      messagesOlderExhausted = false;
       messagesSnapshot = '';
       optimisticMessageIds.clear();
     }
@@ -791,9 +817,15 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
     async function loadMessages(opts = {}) {
       if (!shouldPollWorkspace()) return false;
       if (messagesLoading) return false;
+      const beforeId = Math.floor(Number(opts.beforeId || 0));
+      if (beforeId > 0 && messagesOlderExhausted) return false;
       const gen = state.workspaceGeneration;
       const wasNearBottom = isMessageThreadNearBottom();
       const initialLoad = !messagesLoaded;
+      const prependScroll = beforeId > 0 ? (() => {
+        const el = $('messageThreadBody');
+        return el ? { scrollHeight: el.scrollHeight, scrollTop: el.scrollTop } : null;
+      })() : null;
       messagesLoading = true;
       let changed = false;
       let attentionChanged = false;
@@ -802,18 +834,35 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
       try {
         const hadLoaded = messagesLoaded;
         const previousMaxId = maxMessageId(messages);
-        const res = await workspaceFetch('/messages?limit=500');
+        const suffix = '/messages?limit=' + MESSAGE_HISTORY_PAGE_SIZE + (beforeId > 0 ? '&beforeId=' + encodeURIComponent(String(beforeId)) : '');
+        const res = await workspaceFetch(suffix);
         const body = await res.json().catch(() => ({}));
         if (gen !== state.workspaceGeneration) { stale = true; return false; }
         if (!res.ok || body.ok === false) throw new Error(body.error || 'Failed to load messages');
-        const nextMessages = mergeOptimisticMessages(Array.isArray(body.messages) ? body.messages : []);
+        const fetchedMessages = Array.isArray(body.messages) ? body.messages : [];
+        let nextMessages;
+        if (beforeId > 0) {
+          nextMessages = mergeDirectMessageRows(fetchedMessages, messages);
+          messagesOlderExhausted = fetchedMessages.length < MESSAGE_HISTORY_PAGE_SIZE;
+        } else {
+          const latestMessages = mergeOptimisticMessages(fetchedMessages);
+          if (fetchedMessages.length < MESSAGE_HISTORY_PAGE_SIZE) {
+            nextMessages = latestMessages;
+            messagesOlderExhausted = true;
+          } else {
+            messagesOlderExhausted = false;
+            const minLatestId = minMessageId(fetchedMessages);
+            const olderMessages = minLatestId > 0 ? messages.filter(message => directMessageId(message) < minLatestId) : [];
+            nextMessages = mergeDirectMessageRows(olderMessages, latestMessages);
+          }
+        }
         const nextSnapshot = messageSnapshotFor(nextMessages);
         changed = !messagesLoaded || nextSnapshot !== messagesSnapshot;
         messages = nextMessages;
         messagesSnapshot = nextSnapshot;
         messagesLoaded = true;
         lastMessageLoadOk = true;
-        if (hadLoaded && changed) {
+        if (beforeId <= 0 && hadLoaded && changed) {
           const newMessages = nextMessages.filter(message => (Number(message.id) || 0) > previousMaxId);
           attentionChanged = markAttentionForMessages(newMessages);
           noteNavMessages(unreadDirectMessages(newMessages));
@@ -831,7 +880,7 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
         messagesLoading = false;
         if (!stale) {
           if (attentionChanged && page === 'agents') render();
-          if (opts.rerender !== false && page === 'messages' && (!opts.onlyIfChanged || changed)) renderMessages({ scrollMode: opts.scrollMode || (initialLoad ? 'bottom' : 'auto'), wasNearBottom });
+          if (opts.rerender !== false && page === 'messages' && (!opts.onlyIfChanged || changed)) renderMessages({ scrollMode: opts.scrollMode || (initialLoad ? 'bottom' : 'auto'), wasNearBottom, prependScroll });
         }
       }
       return changed;
@@ -1648,7 +1697,15 @@ const initialState = __WHATSAGENT_INITIAL_STATE__;
           nextCompose.focus();
         }
       }
-      applyMessageScroll(scrollMode, wasNearBottom);
+      if (opts.prependScroll) {
+        const snap = opts.prependScroll;
+        requestAnimationFrame(() => {
+          const nextBody = $('messageThreadBody');
+          if (nextBody) nextBody.scrollTop = Math.max(0, nextBody.scrollHeight - snap.scrollHeight + snap.scrollTop);
+        });
+      } else {
+        applyMessageScroll(scrollMode, wasNearBottom);
+      }
     }
 
     function compactMessagePreview(message) {

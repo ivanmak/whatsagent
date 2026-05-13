@@ -446,7 +446,8 @@ test("renderWebShell emits parseable dashboard JavaScript", () => {
   expect(script).toContain("const gen = state.workspaceGeneration;");
   expect(script).toContain("if (gen !== state.workspaceGeneration) return;");
   expect(script).toContain("const next = await workspaceFetch('/status').then(r => r.json());");
-  expect(script).toContain("const res = await workspaceFetch('/messages?limit=500');");
+  expect(script).toContain("const suffix = '/messages?limit=' + MESSAGE_HISTORY_PAGE_SIZE");
+  expect(script).toContain("if (beforeId > 0) void loadMessages({ beforeId, rerender: true, silent: true, scrollMode: 'preserve' });");
   expect(script).not.toContain("const next = await fetch(wsApiUrl('/status')).then(r => r.json());");
   expect(script).not.toContain("const res = await fetch(wsApiUrl('/messages?limit=500'))");
   // Channel + kanban reset are exported from feature modules and called from main.ts.
@@ -455,7 +456,8 @@ test("renderWebShell emits parseable dashboard JavaScript", () => {
   expect(script).toContain("registerResetHook(() => resetKanban())");
   expect(kanbanSource).toContain("export function resetKanban()");
   expect(kanbanSource).toContain("kanbanTasks = [];");
-  expect(messagesSource).toContain("const body = await workspaceFetch('/channel/messages?limit=500').then(r => r.json());");
+  expect(messagesSource).toContain("const suffix = '/channel/messages?limit=' + CHANNEL_MESSAGE_PAGE_SIZE");
+  expect(messagesSource).toContain("if (beforeId > 0) void loadChannelMessages({ beforeId, rerender: true, silent: true, scrollMode: 'preserve' });");
   expect(messagesSource).toContain("const res = await workspaceFetch('/channel/messages', { method: 'POST'");
   expect(kanbanSource).toContain("const res = await workspaceFetch('/kanban/tasks?' + params.toString());");
   expect(kanbanSource).toContain("const res = await workspaceFetch('/kanban/tasks/' + encodeURIComponent(taskId));");
@@ -600,7 +602,7 @@ test("renderWebShell emits parseable dashboard JavaScript", () => {
   expect(html).toContain(".broadcast-modal textarea");
   expect(script).toContain("message.delivery_kind === 'broadcast'");
   expect(messagesSource).toContain("function renderChannelMessages");
-  expect(messagesSource).toContain("workspaceFetch('/channel/messages?limit=500')");
+  expect(messagesSource).toContain("workspaceFetch(suffix)");
   expect(messagesSource).toContain("data-action=\"send-channel-message\"");
   expect(messagesSource).toContain("data-action=\"toggle-channel-export\"");
   expect(messagesSource).toContain("data-action=\"export-channel\"");

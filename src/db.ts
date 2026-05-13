@@ -3867,15 +3867,28 @@ export function getMessageById(db: Database, id: number): MessageRow | null {
   return db.query<MessageRow, [number]>(messageSelectSql("WHERE messages.id = ?")).get(id) ?? null;
 }
 
-export function listMessages(db: Database, opts: { roleId?: string; limit?: number; latest?: boolean } = {}): MessageRow[] {
+export function listMessages(db: Database, opts: { roleId?: string; limit?: number; latest?: boolean; beforeId?: number; sinceId?: number } = {}): MessageRow[] {
   const limit = Math.max(1, Math.min(500, Math.floor(opts.limit ?? 100)));
-  const latest = opts.latest ?? true;
+  const clauses: string[] = [];
+  const params: Array<string | number> = [];
+  if (opts.roleId) {
+    clauses.push("(messages.from_role_id = ? OR messages.to_role_id = ?)");
+    params.push(opts.roleId, opts.roleId);
+  }
+  const sinceId = Math.floor(Number(opts.sinceId ?? 0));
+  const beforeId = Math.floor(Number(opts.beforeId ?? 0));
+  if (sinceId > 0) {
+    clauses.push("messages.id > ?");
+    params.push(sinceId);
+  }
+  if (beforeId > 0) {
+    clauses.push("messages.id < ?");
+    params.push(beforeId);
+  }
+  const latest = (opts.latest ?? true) && sinceId <= 0;
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const order = latest ? "ORDER BY messages.id DESC" : "ORDER BY messages.id ASC";
-  const rows = opts.roleId
-    ? db.query<MessageRow, [string, string, number]>(messageSelectSql(
-      `WHERE messages.from_role_id = ? OR messages.to_role_id = ? ${order} LIMIT ?`,
-    )).all(opts.roleId, opts.roleId, limit)
-    : db.query<MessageRow, [number]>(messageSelectSql(`${order} LIMIT ?`)).all(limit);
+  const rows = db.query<MessageRow, Array<string | number>>(messageSelectSql(`${where} ${order} LIMIT ?`)).all(...params, limit);
   return latest ? rows.reverse() : rows;
 }
 
