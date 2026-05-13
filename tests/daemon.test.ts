@@ -1493,6 +1493,51 @@ test("channel policy stores threaded replies with root ids", async () => {
   }
 });
 
+test("web channel history endpoint paginates by roots", async () => {
+  const root = await tempProject();
+  try {
+    await initFleet(root);
+    const daemon = await startDaemon(root, { port: 0, consoleLogs: false });
+    const wsBase = await currentWsBase(daemon.url);
+    const wsId = decodeURIComponent(wsBase.split("/").pop()!);
+    try {
+      const ws = daemon.state.workspaces.get(wsId);
+      if (!ws) throw new Error("workspace missing");
+      const role = getRoleByName(ws.db, "serviceA");
+      if (!role) throw new Error("serviceA missing");
+      const root1 = postChannelMessage(ws.db, { fromRoleId: role.id, fromSessionId: null, body: "root-1" });
+      postChannelMessage(ws.db, { fromRoleId: role.id, fromSessionId: null, parentMessageId: root1.id, body: "reply-1" });
+      const root2 = postChannelMessage(ws.db, { fromRoleId: role.id, fromSessionId: null, body: "root-2" });
+      postChannelMessage(ws.db, { fromRoleId: role.id, fromSessionId: null, parentMessageId: root2.id, body: "reply-2" });
+      const root3 = postChannelMessage(ws.db, { fromRoleId: role.id, fromSessionId: null, body: "root-3" });
+
+      const latest = await fetch(`${daemon.url}${wsBase}/channel/messages?rootLimit=2`).then((r) => r.json()) as { page: { rootIds: number[]; rootCount: number; oldestRootId: number; newestRootId: number; hasMoreOlder: boolean }; messages: Array<{ body: string }> };
+      expect(latest.page).toEqual({ rootIds: [root2.id, root3.id], rootCount: 2, oldestRootId: root2.id, newestRootId: root3.id, hasMoreOlder: true });
+      expect(latest.messages.map((message) => message.body)).toEqual(["root-2", "reply-2", "root-3"]);
+
+      const older = await fetch(`${daemon.url}${wsBase}/channel/messages?rootLimit=1&rootBeforeId=${root2.id}`).then((r) => r.json()) as { page: { rootIds: number[]; rootCount: number; oldestRootId: number; newestRootId: number; hasMoreOlder: boolean }; messages: Array<{ body: string; parent_message_id: number | null; root_message_id: number | null; id: number }> };
+      expect(older.page).toEqual({ rootIds: [root1.id], rootCount: 1, oldestRootId: root1.id, newestRootId: root1.id, hasMoreOlder: false });
+      expect(older.messages.map((message) => message.body)).toEqual(["root-1", "reply-1"]);
+      const olderRoots = new Set(older.messages.filter((message) => message.parent_message_id === null).map((message) => message.id));
+      expect(older.messages.every((message) => message.parent_message_id === null || olderRoots.has(message.root_message_id!))).toBe(true);
+
+      const hotRoot = postChannelMessage(ws.db, { fromRoleId: role.id, fromSessionId: null, body: "hot root" });
+      for (let i = 1; i <= 500; i += 1) {
+        postChannelMessage(ws.db, { fromRoleId: role.id, fromSessionId: null, parentMessageId: hotRoot.id, body: `hot reply ${i}` });
+      }
+      const hot = await fetch(`${daemon.url}${wsBase}/channel/messages?rootLimit=1`).then((r) => r.json()) as { page: { rootIds: number[]; rootCount: number }; messages: Array<{ body: string; parent_message_id: number | null }> };
+      expect(hot.page).toMatchObject({ rootIds: [hotRoot.id], rootCount: 1 });
+      expect(hot.messages).toHaveLength(501);
+      expect(hot.messages.filter((message) => message.parent_message_id === null).map((message) => message.body)).toEqual(["hot root"]);
+      expect(hot.messages.at(-1)?.body).toBe("hot reply 500");
+    } finally {
+      daemon.stop();
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 // EP-022 / WA-096: deleted "Kanban agent APIs enforce policy and expose
 // read-only web views" — pinned the legacy kanban-Star auth fallback
 // (`requireKanbanWritePolicy` family). Replacement HTTP-API coverage:

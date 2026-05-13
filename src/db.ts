@@ -2361,6 +2361,86 @@ export function listChannelMessages(db: Database, opts: { channelId?: string; li
   return latest ? rows.reverse() : rows;
 }
 
+export interface ChannelHistoryPage {
+  messages: ChannelMessageRow[];
+  rootIds: number[];
+  rootCount: number;
+  oldestRootId: number | null;
+  newestRootId: number | null;
+  hasMoreOlder: boolean;
+}
+
+interface ChannelRootPageInput {
+  channelId?: string;
+  rootLimit?: number;
+  limit?: number;
+  rootBeforeId?: number;
+  beforeRootId?: number;
+  rootSinceId?: number;
+}
+
+function channelHistoryRootLimit(opts: ChannelRootPageInput): number {
+  return Math.max(1, Math.min(100, Math.floor(opts.rootLimit ?? opts.limit ?? 20)));
+}
+
+function channelHistoryCursor(value: unknown): number {
+  const id = Math.floor(Number(value ?? 0));
+  return Number.isFinite(id) && id > 0 ? id : 0;
+}
+
+function selectChannelHistoryRoots(db: Database, channelId: string, opts: ChannelRootPageInput): { rootIds: number[]; hasMoreOlder: boolean } {
+  const rootLimit = channelHistoryRootLimit(opts);
+  const rootBeforeId = channelHistoryCursor(opts.rootBeforeId ?? opts.beforeRootId);
+  const rootSinceId = channelHistoryCursor(opts.rootSinceId);
+  const rootClauses = ["channel_id = ?", "parent_message_id IS NULL", "(root_message_id IS NULL OR root_message_id = id)"];
+  const rootParams: Array<string | number> = [channelId];
+  if (rootBeforeId > 0) {
+    rootClauses.push("id < ?");
+    rootParams.push(rootBeforeId);
+  }
+  if (rootSinceId > 0) {
+    rootClauses.push("id > ?");
+    rootParams.push(rootSinceId);
+  }
+  const rootRows = db.query<{ id: number }, Array<string | number>>(
+    `SELECT id FROM channel_messages WHERE ${rootClauses.join(" AND ")} ORDER BY id DESC LIMIT ?`,
+  ).all(...rootParams, rootLimit + 1);
+  return {
+    rootIds: rootRows.slice(0, rootLimit).map((row) => row.id).reverse(),
+    hasMoreOlder: rootRows.length > rootLimit,
+  };
+}
+
+function hydrateChannelHistoryRoots(db: Database, channelId: string, rootIds: number[]): ChannelMessageRow[] {
+  if (rootIds.length === 0) return [];
+  const placeholders = rootIds.map(() => "?").join(", ");
+  return db.query<ChannelMessageRow, Array<string | number>>(
+    channelMessageSelectSql(`WHERE channel_messages.channel_id = ? AND (channel_messages.id IN (${placeholders}) OR channel_messages.root_message_id IN (${placeholders})) ORDER BY channel_messages.id ASC`),
+  ).all(channelId, ...rootIds, ...rootIds);
+}
+
+export function listChannelMessagesByRoots(db: Database, opts: { channelId?: string; rootLimit?: number; rootBeforeId?: number; rootSinceId?: number } = {}): ChannelMessageRow[] {
+  const channel = opts.channelId ? getChannelById(db, opts.channelId) : ensureDefaultChannel(db);
+  if (!channel) return [];
+  const { rootIds } = selectChannelHistoryRoots(db, channel.id, opts);
+  return hydrateChannelHistoryRoots(db, channel.id, rootIds);
+}
+
+export function listChannelHistory(db: Database, opts: ChannelRootPageInput = {}): ChannelHistoryPage {
+  const channel = opts.channelId ? getChannelById(db, opts.channelId) : ensureDefaultChannel(db);
+  if (!channel) return { messages: [], rootIds: [], rootCount: 0, oldestRootId: null, newestRootId: null, hasMoreOlder: false };
+  const { rootIds, hasMoreOlder } = selectChannelHistoryRoots(db, channel.id, opts);
+  const messages = hydrateChannelHistoryRoots(db, channel.id, rootIds);
+  return {
+    messages,
+    rootIds,
+    rootCount: rootIds.length,
+    oldestRootId: rootIds[0] ?? null,
+    newestRootId: rootIds[rootIds.length - 1] ?? null,
+    hasMoreOlder,
+  };
+}
+
 export function listUnreadChannelMessages(db: Database, roleId: string, limit = 50): ChannelMessageRow[] {
   ensureDefaultChannel(db);
   const rows = db.query<{ id: number }, [string, string, number]>(

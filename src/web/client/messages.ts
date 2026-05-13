@@ -162,10 +162,12 @@ async function sendWebBroadcast() {
 
 // ---------- Channel (was installChannelMessagesUi) ----------
 
+const CHANNEL_HISTORY_ROOT_PAGE_SIZE = 20;
 let channelMessages = [];
 let channelSnapshot = '';
 let channelMessagesLoaded = false;
 let channelMessagesLoading = false;
+let channelOlderExhausted = false;
 let channelMessageError = '';
 let channelExportMenuOpen = false;
 let activeChannelThreadRootId = null;
@@ -244,6 +246,7 @@ export function resetChannel() {
   channelSnapshot = '';
   channelMessagesLoaded = false;
   channelMessagesLoading = false;
+  channelOlderExhausted = false;
   channelMessageError = '';
   channelExportMenuOpen = false;
   activeChannelThreadRootId = null;
@@ -282,6 +285,26 @@ function channelSnapshotFor(items) {
 function maxChannelMessageId(items) {
   return (items || []).reduce((max, message) => Math.max(max, Number(message.id) || 0), 0);
 }
+function channelMessagesById(...groups) {
+  const byId = new Map();
+  for (const group of groups) {
+    for (const message of group || []) {
+      const id = normalizeChannelMessageId(message?.id);
+      if (id) byId.set(id, message);
+    }
+  }
+  return Array.from(byId.values()).sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
+}
+function channelRootMessagesFrom(items) {
+  return (items || []).filter(channelMessageIsRoot);
+}
+function minChannelRootId(items) {
+  const min = channelRootMessagesFrom(items).reduce((value, message) => {
+    const id = normalizeChannelMessageId(message.id);
+    return id ? Math.min(value, id) : value;
+  }, Number.POSITIVE_INFINITY);
+  return Number.isFinite(min) ? min : 0;
+}
 
 function incomingChannelMessageCount(items) {
   return (items || []).filter(message => message.from_role_name).length;
@@ -311,6 +334,9 @@ function installChannelNewMarkerScrollClear() {
   if (!body) return;
   body.addEventListener('scroll', () => {
     if (channelNewMarker.markerId && channelRootNearBottom()) clearChannelNewMarker();
+    if (body.scrollTop > 96 || channelMessagesLoading || channelOlderExhausted || !channelMessagesLoaded) return;
+    const beforeId = minChannelRootId(channelMessages);
+    if (beforeId > 0) void loadChannelMessages({ beforeId, rerender: true, silent: true, scrollMode: 'preserve' });
   }, { passive: true });
 }
 
@@ -322,24 +348,45 @@ function jumpToChannelNewMarker(markerId) {
 
 async function loadChannelMessages(opts = {}) {
   if (!shouldPollWorkspace()) return false;
-  if (channelMessagesLoading) return;
+  if (channelMessagesLoading) return false;
+  const beforeId = normalizeChannelMessageId(opts.beforeId);
+  if (beforeId && channelOlderExhausted) return false;
   const gen = getState().workspaceGeneration;
-  channelMessagesLoading = true;
   const wasNearBottomBeforeLoad = channelRootNearBottom();
-  let shouldRender = Boolean(opts.rerender);
   const wasNearBottom = channelRootNearBottom();
+  const prependScroll = beforeId ? (() => {
+    const el = $('messageThreadBody');
+    return el ? { scrollHeight: el.scrollHeight, scrollTop: el.scrollTop } : null;
+  })() : null;
+  channelMessagesLoading = true;
+  let shouldRender = Boolean(opts.rerender);
   let stale = false;
   try {
-    const body = await workspaceFetch('/channel/messages?limit=500').then(r => r.json());
+    const suffix = '/channel/messages?rootLimit=' + CHANNEL_HISTORY_ROOT_PAGE_SIZE + (beforeId ? '&rootBeforeId=' + encodeURIComponent(String(beforeId)) : '');
+    const res = await workspaceFetch(suffix);
+    const body = await res.json().catch(() => ({}));
     if (gen !== getState().workspaceGeneration) { stale = true; return false; }
-    const next = Array.isArray(body.messages) ? body.messages : [];
+    if (!res.ok || body.ok === false) throw new Error(body.error || 'Channel messages failed to load');
+    const fetched = Array.isArray(body.messages) ? body.messages : [];
     const previousMaxId = maxChannelMessageId(channelMessages);
-    const nextSnapshot = channelSnapshotFor(next);
-    if (opts.onlyIfChanged && nextSnapshot === channelSnapshot) {
-      shouldRender = false;
-      return;
+    const page = body.page || {};
+    let next;
+    if (beforeId) {
+      next = channelMessagesById(fetched, channelMessages);
+      const fetchedRootCount = channelRootMessagesFrom(fetched).length;
+      channelOlderExhausted = page.hasMoreOlder === false || fetchedRootCount < CHANNEL_HISTORY_ROOT_PAGE_SIZE;
+    } else {
+      const minLatestRootId = minChannelRootId(fetched);
+      const olderLoaded = minLatestRootId > 0 ? channelMessages.filter(message => (channelMessageRootId(message) || 0) < minLatestRootId) : [];
+      next = channelMessagesLoaded ? channelMessagesById(olderLoaded, fetched) : fetched;
+      channelOlderExhausted = page.hasMoreOlder === false;
     }
-    if (channelMessagesLoaded) {
+    const nextSnapshot = channelSnapshotFor(next);
+    if (!beforeId && opts.onlyIfChanged && nextSnapshot === channelSnapshot) {
+      shouldRender = false;
+      return false;
+    }
+    if (channelMessagesLoaded && !beforeId) {
       const newMessages = next.filter(message => (Number(message.id) || 0) > previousMaxId);
       noteNavMessages(incomingChannelMessageCount(newMessages));
       markChannelNewMarker(newMessages, wasNearBottomBeforeLoad);
@@ -347,14 +394,16 @@ async function loadChannelMessages(opts = {}) {
     channelMessages = next;
     channelSnapshot = nextSnapshot;
     channelMessagesLoaded = true;
-    channelMessageError = body.ok === false ? (body.error || 'Channel messages failed to load') : '';
+    channelMessageError = '';
     clearMessages();
+    return true;
   } catch (e) {
     stale = gen !== getState().workspaceGeneration;
     if (!stale && !opts.silent) channelMessageError = String(e?.message || e);
+    return false;
   } finally {
     channelMessagesLoading = false;
-    if (!stale && shouldRender && getPage() === 'messages') callRenderMessages({ scrollMode: getPendingMessageScroll() || 'preserve', wasNearBottom });
+    if (!stale && shouldRender && getPage() === 'messages') callRenderMessages({ scrollMode: getPendingMessageScroll() || 'preserve', wasNearBottom, prependScroll });
   }
 }
 
@@ -392,12 +441,20 @@ function renderChannelMessages(opts = {}) {
   setPendingMessageScroll('');
   const scrollMode = opts.scrollMode || 'preserve';
   const wasNearBottomFlag = opts.wasNearBottom ?? true;
-  applyMessageScroll(scrollMode, wasNearBottomFlag);
-  if (scrollMode !== 'bottom' && !wasNearBottomFlag && previousRootScrollTop) {
+  if (opts.prependScroll) {
+    const snap = opts.prependScroll;
     requestAnimationFrame(() => {
       const nextRoot = $('messageThreadBody');
-      if (nextRoot) nextRoot.scrollTop = previousRootScrollTop;
+      if (nextRoot) nextRoot.scrollTop = Math.max(0, nextRoot.scrollHeight - snap.scrollHeight + snap.scrollTop);
     });
+  } else {
+    applyMessageScroll(scrollMode, wasNearBottomFlag);
+    if (scrollMode !== 'bottom' && !wasNearBottomFlag && previousRootScrollTop) {
+      requestAnimationFrame(() => {
+        const nextRoot = $('messageThreadBody');
+        if (nextRoot) nextRoot.scrollTop = previousRootScrollTop;
+      });
+    }
   }
   const currentSidebarRootId = normalizeChannelMessageId(activeChannelThreadRootId);
   if (currentSidebarRootId) {
