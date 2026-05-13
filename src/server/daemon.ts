@@ -256,6 +256,9 @@ interface TerminalWsData {
   // snapshot.
   awaitingRestoreAck?: boolean;
   restoreBufferedOutputFrames?: string[];
+  // WA-227 — serialize terminal input POSTs per browser socket so
+  // high-latency WebSocket frames cannot race into the PTY out of order.
+  inputChain?: Promise<void>;
 }
 
 interface AgentContextInput {
@@ -3253,6 +3256,21 @@ async function terminalWsPump(socket: ServerWebSocket<TerminalWsData>): Promise<
   }
 }
 
+async function terminalWsInput(socket: ServerWebSocket<TerminalWsData>, ws: WorkspaceState, data: string): Promise<void> {
+  const runner = await runnerStatusForRoleId(socket.data.state, ws, socket.data.roleId);
+  const controlUrl = runner ? runnerControlUrl(runner) : null;
+  if (!runner || !runner.reachable || !controlUrl) {
+    wsSend(socket, { type: "runner_status", status: runner?.status ?? "offline", exitCode: runner?.exit_code, exitSignal: runner?.exit_signal, sessionId: runner?.session_id });
+    return;
+  }
+  const res = await fetchRunnerControl(runner, "/input", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data }) });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { status?: string; exitCode?: number; exit_code?: number; exitSignal?: string; exit_signal?: string };
+    wsSend(socket, { type: "runner_status", status: body.status ?? "offline", exitCode: body.exitCode ?? body.exit_code, exitSignal: body.exitSignal ?? body.exit_signal, sessionId: runner.session_id });
+    invalidateWsRunnerCache(socket);
+  }
+}
+
 async function terminalWsMessage(socket: ServerWebSocket<TerminalWsData>, message: string | Buffer): Promise<void> {
   const payload = JSON.parse(message.toString()) as { type?: string; data?: string; cols?: number; rows?: number; sessionId?: string; reason?: string };
   if (payload.type === "restore_complete") {
@@ -3263,6 +3281,18 @@ async function terminalWsMessage(socket: ServerWebSocket<TerminalWsData>, messag
   if (!wsForSocket) {
     wsSend(socket, { type: "runner_status", status: "offline" });
     terminalWsClose(socket);
+    return;
+  }
+  if (payload.type === "input") {
+    const data = payload.data ?? "";
+    const inputJob = (socket.data.inputChain ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(async () => {
+        if (socket.data.closed) return;
+        await terminalWsInput(socket, wsForSocket, data);
+      });
+    socket.data.inputChain = inputJob.catch(() => undefined);
+    await inputJob;
     return;
   }
   const runner = await runnerStatusForRoleId(socket.data.state, wsForSocket, socket.data.roleId);
@@ -3308,15 +3338,6 @@ async function terminalWsMessage(socket: ServerWebSocket<TerminalWsData>, messag
     wsSend(socket, { type: "runner_status", status: runner?.status ?? "offline", exitCode: runner?.exit_code, exitSignal: runner?.exit_signal, sessionId: runner?.session_id });
     return;
   }
-  if (payload.type === "input") {
-    const res = await fetchRunnerControl(runner, "/input", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: payload.data ?? "" }) });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({})) as { status?: string; exitCode?: number; exit_code?: number; exitSignal?: string; exit_signal?: string };
-      wsSend(socket, { type: "runner_status", status: body.status ?? "offline", exitCode: body.exitCode ?? body.exit_code, exitSignal: body.exitSignal ?? body.exit_signal, sessionId: runner.session_id });
-      invalidateWsRunnerCache(socket);
-    }
-    return;
-  }
 }
 
 function terminalWsClose(socket: ServerWebSocket<TerminalWsData>): void {
@@ -3331,6 +3352,7 @@ function terminalWsClose(socket: ServerWebSocket<TerminalWsData>): void {
   socket.data.cachedControlSecret = undefined;
   socket.data.cachedSessionId = undefined;
   socket.data.controlReady = false;
+  socket.data.inputChain = undefined;
 }
 
 const AGENT_SESSION_CREDENTIAL_TTL_MS = 15 * 60 * 1000;

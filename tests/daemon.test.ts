@@ -1619,6 +1619,68 @@ test("startDaemon launches an OpenCode PTY runner using the configured runtime c
   }
 });
 
+test("WA-227 terminal WS serializes input POSTs per socket", async () => {
+  const root = await tempProject();
+  try {
+    await initFleet(root);
+    setTestRuntimeCommand(root, "codex", "bash", ["-c", `printf "ready\\r\\n"; while IFS= read -r line; do printf "echo:%s\\r\\n" "$line"; done`]);
+    const daemon = await startDaemon(root, { port: 0, consoleLogs: false });
+    const wsBase = await currentWsBase(daemon.url);
+    try {
+      const launchRes = await fetch(`${daemon.url}${wsBase}/roles-by-id/serviceA%3AserviceA/launch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ host: "codex" }),
+      });
+      expect(launchRes.ok).toBe(true);
+      const control = await waitForRunnerControl(daemon.url, wsBase, "serviceA");
+      await waitForRoleOutputText(daemon.url, wsBase, "serviceA", "ready");
+
+      const terminal = await openTerminalWsReady(daemon.url, wsBase, "serviceA");
+      const started: string[] = [];
+      const completed: string[] = [];
+      let active = 0;
+      let maxActive = 0;
+      const originalFetch = globalThis.fetch;
+      const spy = spyOn(globalThis, "fetch").mockImplementation((async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" || input instanceof URL ? String(input) : input.url;
+        if (url.startsWith(control.control_url) && new URL(url).pathname === "/input") {
+          const rawBody = typeof init?.body === "string" ? init.body : "{}";
+          const data = String((JSON.parse(rawBody) as { data?: string }).data ?? "");
+          started.push(data);
+          active += 1;
+          maxActive = Math.max(maxActive, active);
+          const delay = data === "a" ? 60 : data === "b" ? 20 : 0;
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          active -= 1;
+          completed.push(data);
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+        }
+        return originalFetch(input, init);
+      }) as typeof fetch);
+      try {
+        terminal.ws.send(JSON.stringify({ type: "input", data: "a" }));
+        terminal.ws.send(JSON.stringify({ type: "input", data: "b" }));
+        terminal.ws.send(JSON.stringify({ type: "input", data: "c" }));
+        const deadline = Date.now() + 2_000;
+        while (Date.now() < deadline && completed.length < 3) await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(started).toEqual(["a", "b", "c"]);
+        expect(completed).toEqual(["a", "b", "c"]);
+        expect(maxActive).toBe(1);
+      } finally {
+        spy.mockRestore();
+        terminal.ws.close();
+      }
+
+      await fetch(`${daemon.url}${wsBase}/roles-by-id/serviceA%3AserviceA/stop`, { method: "POST" });
+    } finally {
+      await daemon.stop();
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("WA-177 terminal WS pulse proxies sanitized reasons and keeps mirror dims", async () => {
   const root = await tempProject();
   try {
